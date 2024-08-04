@@ -1,0 +1,33 @@
+{{template "partials/navbar" .}}
+
+<div class="flexbox-center">
+    <img src="/img/magnifying-glass-icon.svg" alt="" width="25px" height="25px">
+    <h2 style="font-weight: 400;">search</h2>
+</div>
+
+<div id="search-input-wrapper" class="flexbox-center">
+    <form id="search-form" style="position: relative; display: inline-block;">
+        <input type="text" name="search-input" id="search-input" autocomplete="off" autocapitalize="off"
+            autocorrect="off" placeholder="Describe a movie..." autofocus style="padding-right: 30px;">
+        <button type="submit"
+            style="position: absolute; right: 5px; top: 50%; transform: translateY(-50%); background: none; border: none; cursor: pointer;">
+            <img src="/img/arrow-sm-right.svg" alt="" width="21px" height="21px"
+                style="vertical-align: middle; margin-top: 1.25px;">
+        </button>
+        <input type="submit" style="display: none;">
+    </form>
+</div><br>
+
+<div style="text-align: center; line-height: 1.9rem;">
+    <div style="font-weight: normal; font-size: 1.1rem; margin-bottom: 10px;">Sample searches:</div>
+    <div class="example-searches">
+        <a href="/search?q=linux+commands">linux commands</a>
+    </div>
+
+</div>
+
+<br>
+
+<script src="/js/index.js" async></script>
+
+{{template "partials/footer" .}}
