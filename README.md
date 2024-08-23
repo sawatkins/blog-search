@@ -1,2 +1,2 @@
 # search
-Minimal search engine implementation written in Go
+A lightweight search engine focused on indexing blog content
