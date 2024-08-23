@@ -2,31 +2,66 @@ import asyncio
 import aiohttp
 import feedparser
 from bs4 import BeautifulSoup
-import json  # Add this import
+import json
+from playwright.async_api import async_playwright # type: ignore
 
-# Fetch and parse a single feed
+async def fetch_feed_content(session, url):
+    async with session.get(url, timeout=30) as response:
+        response.raise_for_status()
+        return await response.text()
+
+async def extract_content_with_readability(page, url):
+    await page.goto(url, timeout=30000)
+    
+    # Inject Readability.js into the page
+    await page.add_script_tag(url="https://cdnjs.cloudflare.com/ajax/libs/readability/0.5.0/Readability.js")
+    
+    # Now use Readability to extract the content
+    return await page.evaluate('''() => {
+        var article = new Readability(document).parse();
+        return article ? article.textContent : "";
+    }''')
+
+async def process_entry(page, entry):
+    post = {
+        'title': entry.get('title', ''),
+        'url': entry.get('link', ''),
+        'date': entry.get('published', '') or entry.get('updated', '')
+    }
+    try:
+        content = await extract_content_with_readability(page, post['url'])
+        post['content'] = clean_text(content)
+        print(f"Content extracted from URL: {post['url']}")
+        return post
+    except Exception as e:
+        print(f"Error processing entry {post['url']}: {e}")
+        return None
+
 async def process_feed(session, url):
-    # Fetch the feed content
-    async with session.get(url) as response:
-        feed_content = await response.text()
-    
-    # Parse the feed
-    feed = feedparser.parse(feed_content)
-    
-    # Extract relevant information from each entry
-    posts = []
-    for entry in feed.entries:
-        post = {
-            'title': entry.get('title', ''),
-            'url': entry.get('link', ''),
-            'description': clean_text(entry.get('description', '')),
-            'content': clean_text(entry.get('content', [{}])[0].get('value', '')),
-            'date': entry.get('published', '') or entry.get('updated', '')
-        }
-        posts.append(post)
-    
-    print(f"URL: {url}\nPosts found: {len(posts)}")
-    return posts # this is a list of dictionaries
+    try:
+        print(f"Processing feed for URL: {url}")
+        feed_content = await fetch_feed_content(session, url)
+        feed = feedparser.parse(feed_content)
+        
+        posts = []
+        async with async_playwright() as p:
+            browser = await p.firefox.launch()
+            page = await browser.new_page()
+            
+            for entry in feed.entries:
+                post = await process_entry(page, entry)
+                if post:
+                    posts.append(post)
+            
+            await browser.close()
+        
+        print(f"URL: {url}\nPosts found: {len(posts)}")
+        return posts
+    except aiohttp.ClientError as e:
+        print(f"Error fetching feed {url}: {e}")
+    except Exception as e:
+        print(f"Unexpected error processing feed {url}: {e}")
+    return []  # Return an empty list if there was an error
 
 # Remove HTML tags and clean text
 def clean_text(html_content):
@@ -58,7 +93,6 @@ def print_sample_posts(posts, sample_size=10):
         print(f"Title: {post['title']}")
         print(f"URL: {post['url']}")
         print(f"Date: {post['date']}")
-        print(f"Description: {post['description'][:100]}...")
         print(f"Content: {post['content'][:100]}...")
         print()
 
@@ -75,13 +109,13 @@ def load_posts_from_json(filename="all_posts.json"):
 
 # Main function
 async def main():
-    # urls = read_urls("small-feeds.txt")
-    # all_posts = await fetch_all_feeds(urls)
-    # save_posts_to_json(all_posts)  # Save posts to JSON file
-    # print_sample_posts(all_posts)
-
-    all_posts = load_posts_from_json()
+    urls = read_urls("small-feeds.txt")
+    all_posts = await fetch_all_feeds(urls)
+    save_posts_to_json(all_posts)  # Save posts to JSON file
     print_sample_posts(all_posts)
+
+    # all_posts = load_posts_from_json()
+    # print_sample_posts(all_posts)
 
 if __name__ == "__main__":
     asyncio.run(main())
