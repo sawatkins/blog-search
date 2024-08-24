@@ -3,3 +3,4 @@ tmp/
 .vscode/
 venv/
 __pycache__/
+*backup

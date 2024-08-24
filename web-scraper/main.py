@@ -4,6 +4,7 @@ import feedparser
 from bs4 import BeautifulSoup
 import json
 from playwright.async_api import async_playwright # type: ignore
+import os
 
 async def fetch_feed_content(session, url):
     async with session.get(url, timeout=30) as response:
@@ -13,8 +14,11 @@ async def fetch_feed_content(session, url):
 async def extract_content_with_readability(page, url):
     await page.goto(url, timeout=30000)
     
-    # Inject Readability.js into the page
-    await page.add_script_tag(url="https://cdnjs.cloudflare.com/ajax/libs/readability/0.5.0/Readability.js")
+    # Read the local Readability.js file
+    readability_js_path = os.path.join(os.path.dirname(__file__), 'Readability.min.js')
+    
+    # Add Readability.js to the page
+    await page.add_script_tag(path=readability_js_path)
     
     # Now use Readability to extract the content
     return await page.evaluate('''() => {
@@ -109,13 +113,13 @@ def load_posts_from_json(filename="all_posts.json"):
 
 # Main function
 async def main():
-    urls = read_urls("small-feeds.txt")
-    all_posts = await fetch_all_feeds(urls)
-    save_posts_to_json(all_posts)  # Save posts to JSON file
-    print_sample_posts(all_posts)
-
-    # all_posts = load_posts_from_json()
+    # urls = read_urls("small-feeds.txt")
+    # all_posts = await fetch_all_feeds(urls)
+    # save_posts_to_json(all_posts)  # Save posts to JSON file
     # print_sample_posts(all_posts)
+
+    all_posts = load_posts_from_json()
+    print_sample_posts(all_posts)
 
 if __name__ == "__main__":
     asyncio.run(main())
