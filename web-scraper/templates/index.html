@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Search Engine</title>
+    <style>
+        body { font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }
+        form { margin-bottom: 20px; }
+        input[type="text"] { width: 70%; padding: 5px; }
+        input[type="submit"] { padding: 5px 10px; }
+        .result { margin-bottom: 20px; border-bottom: 1px solid #ccc; padding-bottom: 10px; }
+    </style>
+</head>
+<body>
+    <h1>Search Engine</h1>
+    <form method="post">
+        <input type="text" name="query" placeholder="Enter your search query" value="{{ query or '' }}">
+        <input type="submit" value="Search">
+    </form>
+
+    {% if results is not none %}
+        <h2>Search Results</h2>
+        {% if results %}
+            {% for post in results[:5] %}
+                <div class="result">
+                    <h3>{{ post.title }}</h3>
+                    <p><strong>URL:</strong> <a href="{{ post.url }}" target="_blank">{{ post.url }}</a></p>
+                    <p><strong>Date:</strong> {{ post.date }}</p>
+                    <p><strong>Content:</strong> {{ post.content[:100] }}...</p>
+                </div>
+            {% endfor %}
+        {% else %}
+            <p>No results found.</p>
+        {% endif %}
+    {% endif %}
+</body>
+</html>
