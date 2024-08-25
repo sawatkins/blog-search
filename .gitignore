@@ -2,5 +2,6 @@
 tmp/
 .vscode/
 venv/
+search-venv/
 __pycache__/
 *backup
