@@ -1,12 +1,32 @@
 from collections import defaultdict
 from main import load_posts_from_json
+import sqlite3
 import re
 
 class SearchEngine:
-    def __init__(self):
+    def __init__(self, use_db=False, db_name='posts.db'):
         self.index = defaultdict(set)
-        self.posts = load_posts_from_json()
+        self.use_db = use_db
+        self.db_name = db_name
+        self.posts = self.load_posts()
         self.create_index()
+
+    def load_posts(self):
+        if self.use_db:
+            return self.load_posts_from_db()
+        else:
+            return load_posts_from_json()
+
+    def load_posts_from_db(self):
+        conn = sqlite3.connect(self.db_name)
+        cursor = conn.cursor()
+        cursor.execute('SELECT title, url, date, content FROM posts')
+        posts = [
+            {'title': row[0], 'url': row[1], 'date': row[2], 'content': row[3]}
+            for row in cursor.fetchall()
+        ]
+        conn.close()
+        return posts
 
     def clean_text(self, text):
         # Remove newlines and extra whitespace
@@ -33,7 +53,8 @@ class SearchEngine:
 
 # Example usage
 if __name__ == "__main__":
-    engine = SearchEngine()
+    use_db = True  # Set to True to use SQLite database
+    engine = SearchEngine(use_db=use_db)
     
     while True:
         query = input("Enter your search query (or 'quit' to exit): ")

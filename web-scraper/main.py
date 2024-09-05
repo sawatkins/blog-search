@@ -5,6 +5,7 @@ from bs4 import BeautifulSoup
 import json
 from playwright.async_api import async_playwright # type: ignore
 import os
+import sqlite3
 
 async def fetch_feed_content(session, url):
     async with session.get(url, timeout=30) as response:
@@ -106,19 +107,53 @@ def save_posts_to_json(posts, filename="all_posts.json"):
         json.dump(posts, f, ensure_ascii=False, indent=4)
     print(f"Saved {len(posts)} posts to {filename}")
 
+def init_db(db_name='posts.db'):
+    conn = sqlite3.connect(db_name)
+    cursor = conn.cursor()
+    cursor.execute('''
+    CREATE TABLE IF NOT EXISTS posts (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        title TEXT,
+        url TEXT UNIQUE,
+        date TEXT,
+        content TEXT
+    )
+    ''')
+    conn.commit()
+    return conn
 
 def load_posts_from_json(filename="all_posts.json"):
     with open(filename, 'r', encoding='utf-8') as f:
         return json.load(f)
+    
+    
+def save_posts_to_db(posts, conn):
+    cursor = conn.cursor()
+    for post in posts:
+        cursor.execute('''
+        INSERT OR REPLACE INTO posts (title, url, date, content)
+        VALUES (?, ?, ?, ?)
+        ''', (post['title'], post['url'], post['date'], post['content']))
+    conn.commit()
+    print(f"Saved {len(posts)} posts to the database")
 
-# Main function
+
+# Modify the main function
 async def main():
-    # urls = read_urls("small-feeds.txt")
-    # all_posts = await fetch_all_feeds(urls)
-    # save_posts_to_json(all_posts)  # Save posts to JSON file
-    # print_sample_posts(all_posts)
-
-    all_posts = load_posts_from_json()
+    urls = read_urls("small-feeds.txt")
+    all_posts = await fetch_all_feeds(urls)
+    
+    # Save posts to JSON file (keeping existing implementation)
+    save_posts_to_json(all_posts)
+    
+    # Optionally save to SQLite database
+    # Uncomment the following lines to use SQLite
+    conn = init_db()
+    save_posts_to_db(all_posts, conn)
+    conn.close()
+    
+    
+    # all_posts = load_posts_from_json()
     print_sample_posts(all_posts)
 
 if __name__ == "__main__":
