@@ -1,4 +1,3 @@
-http://bair.berkeley.edu/blog/feed.xml
 https://blog.jgc.org/feeds/posts/default
 https://jakeseliger.com/feed
 https://letterstoanewdeveloper.com/feed
