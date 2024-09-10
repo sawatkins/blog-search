@@ -53,7 +53,7 @@ class SearchEngine:
             for word, freq in word_freq.items():
                 self.index[word][post_id] = freq
 
-        self.avg_doc_length = total_length / self.total_docs
+        self.avg_doc_length = total_length / self.total_docs #does this work?
         print(f"Indexed {self.total_docs} posts")
 
     def bm25_score(self, query_words, post_id):
@@ -81,7 +81,6 @@ class SearchEngine:
         sorted_results = sorted(scores.items(), key=lambda x: x[1], reverse=True)
         return [self.posts[post_id] for post_id, score in sorted_results if score > 0]
 
-# Example usage
 if __name__ == "__main__":
     use_db = True  # Set to True to use SQLite database
     engine = SearchEngine(use_db=use_db)
