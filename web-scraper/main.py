@@ -39,7 +39,7 @@ def init_db(db_name='posts.db'):
     conn.commit()
     return conn
        
-def save_posts_to_db(pages, conn):
+def save_all_posts_to_db(pages, conn):
     cursor = conn.cursor()
     for page in pages:      
         cursor.execute('''
@@ -87,11 +87,11 @@ def main():
                          'https://letterstoanewdeveloper.com/2022/03/07/changes-from-bootcamp-to-a-real-dev-job/',
                          'https://jakeseliger.com/2021/02/03/the-effect-of-zoning-restrictions-on-the-life-of-the-artist/']
 
-    threads = 4
-    url_store = add_to_compressed_dict(test_sitemap_link)
+    threads = 10
+    url_store = add_to_compressed_dict(sitemap_links) # test_sitemap_link
     extracted_content = []
     while url_store.done is False:
-        bufferlist, url_store = load_download_buffer(url_store, sleep_time=10)
+        bufferlist, url_store = load_download_buffer(url_store, sleep_time=5)
         for url, result in buffered_downloads(bufferlist, threads):
             print('scraping:', url)
             if result is not None:
@@ -115,7 +115,7 @@ def main():
 
     save_posts_to_json(extracted_content, 'extracted_content.json')    
     conn = init_db()
-    save_posts_to_db(extracted_content, conn)
+    save_all_posts_to_db(extracted_content, conn)
     conn.close()
 
 if __name__ == "__main__":
