@@ -5,7 +5,7 @@ from search_engine import SearchEngine
 
 app = FastAPI()
 templates = Jinja2Templates(directory="templates")
-search_engine = SearchEngine(use_db=True)
+search_engine = SearchEngine()
 
 @app.get("/", response_class=HTMLResponse)
 async def home(request: Request):

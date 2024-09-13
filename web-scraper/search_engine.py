@@ -5,43 +5,37 @@ import re
 import math
 
 class SearchEngine:
-    def __init__(self, use_db=False, db_name='posts.db'):
-        self.use_db = use_db
+    def __init__(self, db_name='pages.db'):
         self.db_name = db_name
-        self.posts = self.load_posts()
+        self.posts = self.load_posts_from_db()
         self.index = defaultdict(dict)
         self.doc_lengths = {}
         self.avg_doc_length = 0
         self.total_docs = len(self.posts)
         self.create_index()
 
-    def load_posts(self):
-        if self.use_db:
-            return self.load_posts_from_db()
-        else:
-            return load_posts_from_json()
-
     def load_posts_from_db(self):
         conn = sqlite3.connect(self.db_name)
         cursor = conn.cursor()
-        cursor.execute('SELECT title, url, date, content FROM posts')
+        cursor.execute('SELECT title, url, date, text FROM pages')
         posts = [
-            {'title': row[0], 'url': row[1], 'date': row[2], 'content': row[3]}
+            {'title': row[0], 'url': row[1], 'date': row[2], 'text': row[3]}
             for row in cursor.fetchall()
         ]
         conn.close()
         return posts
 
     def clean_text(self, text):
-        # Remove newlines and extra whitespace
+        if text is None:
+            return ''
         return re.sub(r'\s+', ' ', text.replace('\n', ' '), flags=re.MULTILINE).strip().lower()
 
     def create_index(self):
         total_length = 0
         for post_id, post in enumerate(self.posts):
             title = self.clean_text(post['title'])
-            content = self.clean_text(post['content'])
-            words = title.split() + content.split()
+            text = self.clean_text(post['text'])
+            words = title.split() + text.split()
             doc_length = len(words)
             self.doc_lengths[post_id] = doc_length
             total_length += doc_length
@@ -82,8 +76,7 @@ class SearchEngine:
         return [self.posts[post_id] for post_id, score in sorted_results if score > 0]
 
 if __name__ == "__main__":
-    use_db = True  # Set to True to use SQLite database
-    engine = SearchEngine(use_db=use_db)
+    engine = SearchEngine()
     
     while True:
         query = input("Enter your search query (or 'quit' to exit): ")
@@ -96,5 +89,5 @@ if __name__ == "__main__":
             print(f"Title: {post['title']}")
             print(f"URL: {post['url']}")
             print(f"Date: {post['date']}")
-            print(f"Content: {post['content'][:100]}...")
+            print(f"Text: {post['text'][:100]}...")
             print()

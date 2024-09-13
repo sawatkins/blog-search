@@ -30,7 +30,7 @@
                     <h3>{{ post.title }}</h3>
                     <p><strong>URL:</strong> <a href="{{ post.url }}" target="_blank">{{ post.url }}</a></p>
                     <p><strong>Date:</strong> {{ post.date }}</p>
-                    <p><strong>Content:</strong> {{ post.content[:100] }}...</p>
+                    <p><strong>Text:</strong> {{ post.text[:100] }}...</p>
                 </div>
             {% endfor %}
         {% else %}
