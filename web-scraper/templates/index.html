@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Search Engine</title>
+    <title>Blog Search</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Ubuntu:ital,wght@0,300;0,400;0,500;0,700;1,300;1,400;1,500;1,700&display=swap" rel="stylesheet">
@@ -12,30 +12,36 @@
         form { margin-bottom: 20px; }
         input[type="text"] { width: 70%; padding: 5px; }
         input[type="submit"] { padding: 5px 10px; }
-        .result { margin-bottom: 20px; border-bottom: 1px solid #ccc; padding-bottom: 10px; }
+        .result { margin-bottom: 15px; border-bottom: 1px solid #ccc; padding-bottom: 7.5px; }
+        .result h3 { margin: 7.5px 0; }
+        .result p { margin: 7.5px 0; }
     </style>
 </head>
 <body>
-    <h1>Search Engine</h1>
+    <h1><a href="/" style="text-decoration: none; color: inherit;">Blog Search</a></h1>
     <form method="post">
-        <input type="text" name="query" placeholder="Enter your search query" value="{{ query or '' }}">
+        <input type="text" name="query" placeholder="Enter your search query" autofocus autocomplete="off" autocapitalize="off" value="{{ query or '' }}" >
         <input type="submit" value="Search">
     </form>
 
     {% if results is not none %}
         <h2>Search Results</h2>
         {% if results %}
+            <p style="font-size: 0.9rem;">Found {{ results|length }} results. {{ time }} seconds.</p>
             {% for post in results[:5] %}
                 <div class="result">
-                    <h3>{{ post.title }}</h3>
-                    <p><strong>URL:</strong> <a href="{{ post.url }}" target="_blank">{{ post.url }}</a></p>
-                    <p><strong>Date:</strong> {{ post.date }}</p>
-                    <p><strong>Text:</strong> {{ post.text[:100] }}...</p>
+                    <p><a href="{{ post.url }}" target="_blank">{{ post.url }}</a></p>
+                    <h3>{{ post.title[:90] }}</h3>
+                    <p><strong style="font-size: 0.9rem;">{{ post.date }}</strong> {{ post.text[:150] }}...</p>
                 </div>
             {% endfor %}
         {% else %}
             <p>No results found.</p>
         {% endif %}
+    {% else %}
+        <h2>About</h2>
+        <p>Blog search is a search engine that focuses on indexing personal blogs mainly in English.</p>
+        <p>It is a personal project of mine. It currently indexes <strong>{{ posts_size }}</strong> pages.</p>
     {% endif %}
 </body>
 </html>

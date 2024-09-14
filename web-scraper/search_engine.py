@@ -8,6 +8,7 @@ class SearchEngine:
     def __init__(self, db_name='pages.db'):
         self.db_name = db_name
         self.posts = self.load_posts_from_db()
+        self.posts_size = len(self.posts)
         self.index = defaultdict(dict)
         self.doc_lengths = {}
         self.avg_doc_length = 0
@@ -24,7 +25,7 @@ class SearchEngine:
         ]
         conn.close()
         return posts
-
+    
     def clean_text(self, text):
         if text is None:
             return ''
