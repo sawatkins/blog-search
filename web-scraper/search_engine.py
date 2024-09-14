@@ -48,7 +48,7 @@ class SearchEngine:
                 self.index[word][post_id] = freq
 
         self.avg_doc_length = total_length / self.total_docs #does this work?
-        print(f"Indexed {self.total_docs} posts")
+        print(f"Indexed {self.total_docs} pages")
 
     def bm25_score(self, query_words, post_id):
         k1 = 1.5

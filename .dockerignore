@@ -4,4 +4,5 @@ __pycache__/
 .envrc
 .venv/
 *backup.db
-
+*.txt
+!requirements.txt
