@@ -1,5 +1,4 @@
 from collections import defaultdict
-from main import load_posts_from_json
 import sqlite3
 import re
 import math
