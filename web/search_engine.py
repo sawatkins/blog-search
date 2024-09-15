@@ -1,6 +1,7 @@
 from collections import defaultdict
 import sqlite3
 import re
+import os
 import math
 
 class SearchEngine:
@@ -15,7 +16,7 @@ class SearchEngine:
         self.create_index()
 
     def load_posts_from_db(self):
-        conn = sqlite3.connect(self.db_name)
+        conn = sqlite3.connect(os.path.join(os.path.dirname(__file__), '../data/', self.db_name))
         cursor = conn.cursor()
         cursor.execute('SELECT title, url, date, text FROM pages')
         posts = [

@@ -1,8 +1,8 @@
 .DS_Store
 tmp/
 .vscode/
-venv/
-search-venv/
+.venv/
+backup-venv/
 __pycache__/
 backup/
 data/

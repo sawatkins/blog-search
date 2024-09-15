@@ -1,2 +1,2 @@
-# search
-A lightweight search engine focused on indexing blog content
+# blog-search
+blog-search is a lightweight search engine focused on indexing personal blog content.

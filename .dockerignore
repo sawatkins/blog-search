@@ -2,7 +2,5 @@
 .vscode/
 .DS_Store
 __pycache__/
-search-venv/
-*backup.db
-backup/
-data/
+.venv/
+backup/*
