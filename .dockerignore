@@ -1,8 +1,8 @@
-fly.toml
 .git/
+.vscode/
+.DS_Store
 __pycache__/
-.envrc
-.venv/
+search-venv/
 *backup.db
-*.txt
-!requirements.txt
+backup/
+data/

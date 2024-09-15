@@ -1,6 +1,0 @@
-https://blog.jgc.org/feeds/posts/default
-https://jakeseliger.com/feed
-https://letterstoanewdeveloper.com/feed
-https://feeds.feedburner.com/stavrosstuff
-https://www.bookofjoe.com/atom.xml
-https://blog.fogus.me/feed
