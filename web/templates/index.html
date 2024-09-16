@@ -8,13 +8,45 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Ubuntu:ital,wght@0,300;0,400;0,500;0,700;1,300;1,400;1,500;1,700&display=swap" rel="stylesheet">
     <style>
-        body { font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }
-        form { margin-bottom: 20px; }
-        input[type="text"] { width: 70%; padding: 5px; }
-        input[type="submit"] { padding: 5px 10px; }
-        .result { margin-bottom: 15px; border-bottom: 1px solid #ccc; padding-bottom: 7.5px; }
-        .result h3 { margin: 7.5px 0; }
-        .result p { margin: 7.5px 0; }
+        body { 
+            font-family: 'Ubuntu', Arial, sans-serif; 
+            max-width: 800px; 
+            margin: 0 auto; 
+            padding: 20px;
+            /* line-height: 1.6; */
+        }
+        form { 
+            margin-bottom: 20px; 
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+        input[type="text"] { 
+            flex-grow: 1;
+            padding: 10px; 
+            font-size: 16px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+        }
+        input[type="submit"] { 
+            padding: 10px 20px;
+            font-size: 16px;
+            background-color: #f0f0f0;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        .result { 
+            margin-bottom: 12px; 
+            border-bottom: 1px solid #ccc; 
+            padding-bottom: 12px; 
+        }
+        .result h3 { margin: 6px 0; }
+        .result p { margin: 6px 0; }
+        @media (max-width: 600px) {
+            body { padding: 10px; }
+            input[type="text"], input[type="submit"] { width: 100%; }
+        }
     </style>
 </head>
 <body>
@@ -40,8 +72,29 @@
         {% endif %}
     {% else %}
         <h2>About</h2>
-        <p>Blog search is a search engine that focuses on indexing personal blogs mainly in English.</p>
-        <p>It is a personal project of mine. It currently indexes <strong>{{ posts_size }}</strong> pages.</p>
+        <p>Blog search is a search engine that focuses on indexing personal blog content, mainly in English.</p>
+        <p>It's a personal project of mine. It currently indexes <strong>{{ posts_size or '_' }}</strong> pages.</p>
+
+    <div class="more-info">
+        <p style="cursor: pointer; text-decoration: underline;" id="toggle-info">More Info</p>
+        <div id="info-content" style="display: none;">
+            <ul>
+                <li>This project is still in early stages of development. It works best to use simple and general queries.</li>
+                <li>The index size is relatively limited currently, but I'm working on indexing more content.</li>
+                <li>Right now it implements the <a href="https://en.wikipedia.org/wiki/Okapi_BM25" target="_blank">BM25</a> algorithm for ranking the results. I plan on adding better semantic search in the future.</li>
+            </ul>
+        </div>
+    </div>
+    <script>
+        document.getElementById('toggle-info').addEventListener('click', function() {
+            var infoContent = document.getElementById('info-content');
+            if (infoContent.style.display === 'none') {
+                infoContent.style.display = 'block';
+            } else {
+                infoContent.style.display = 'none';
+            }
+        });
+    </script>
     {% endif %}
 </body>
 </html>
