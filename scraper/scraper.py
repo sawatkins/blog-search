@@ -105,7 +105,7 @@ def search_sitemap(domain):
         return []
 
 def get_sitemap_links(allowed_domains, max_workers=20, timeout=30):
-    # WHAT THE FUCK, I DONT UNDERSTAND WHAT THIS CODE IS DOING!!!
+    # TODO: take another look at this code
     sitemap_links = set()
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         future_to_domain = {executor.submit(search_sitemap, domain): domain for domain in allowed_domains}
@@ -152,7 +152,7 @@ def get_sitemap_links_new(allowed_domains):
     with ThreadPoolExecutor(max_workers=20) as executor:
         executor.map(process_domain, allowed_domains)
     
-    # WHY IDN"T THIS EXITING WHEN CONSUMER IS FINISHED@!!!
+    # TODO: consumer should exit when queue is empty
     stop_event.set()
     print("get_sitemap_links_new_consumer stopping")
     consumer.join()
@@ -222,12 +222,12 @@ def main():
     print('sitemap_links', len(sitemap_links))
     # save_urls(sitemap_links, 'sitemap_links.txt')
 
-    test_sitemap_link = ['https://jakeseliger.com/2017/06/27/violence-and-the-sacred-on-campus/',
-                         'https://letterstoanewdeveloper.com/2019/07/29/learn-a-little-jq-awk-and-sed/',
-                         'https://jakeseliger.com/2015/12/14/on-the-manosphere-or-red-pill/',
-                         'https://letterstoanewdeveloper.com/2019/08/05/subscribe-to-a-weekly-link-newsletter/',
-                         'https://letterstoanewdeveloper.com/2022/03/07/changes-from-bootcamp-to-a-real-dev-job/',
-                         'https://jakeseliger.com/2021/02/03/the-effect-of-zoning-restrictions-on-the-life-of-the-artist/']
+    # test_sitemap_link = ['https://jakeseliger.com/2017/06/27/violence-and-the-sacred-on-campus/',
+    #                      'https://letterstoanewdeveloper.com/2019/07/29/learn-a-little-jq-awk-and-sed/',
+    #                      'https://jakeseliger.com/2015/12/14/on-the-manosphere-or-red-pill/',
+    #                      'https://letterstoanewdeveloper.com/2019/08/05/subscribe-to-a-weekly-link-newsletter/',
+    #                      'https://letterstoanewdeveloper.com/2022/03/07/changes-from-bootcamp-to-a-real-dev-job/',
+    #                      'https://jakeseliger.com/2021/02/03/the-effect-of-zoning-restrictions-on-the-life-of-the-artist/']
 
     # print('exiting before actual scraping')
     # exit()

@@ -1,7 +1,7 @@
 import time
 from fastapi import FastAPI, Request, Form # type: ignore
 from fastapi.templating import Jinja2Templates # type: ignore
-from fastapi.responses import HTMLResponse # type: ignore
+from fastapi.responses import HTMLResponse, PlainTextResponse # type: ignore
 from search_engine import SearchEngine
 import os
 
@@ -23,6 +23,13 @@ async def search(request: Request, query: str = Form(...)):
     results = search_engine.search(query)
     end_time = time.time()
     return templates.TemplateResponse("index.html", {"request": request, "results": results, "query": query, "time": round(end_time - start_time, 2)})
+
+@app.get("/robots.txt", response_class=PlainTextResponse)
+async def robots():
+    return """
+User-agent: *
+Disallow: /
+"""
 
 if __name__ == "__main__":
     import uvicorn # type: ignore

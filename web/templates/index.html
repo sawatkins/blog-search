@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Blog Search</title>
+    <meta name="robots" content="noindex, nofollow">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Ubuntu:ital,wght@0,300;0,400;0,500;0,700;1,300;1,400;1,500;1,700&display=swap" rel="stylesheet">
@@ -79,9 +80,10 @@
         <p style="cursor: pointer; text-decoration: underline;" id="toggle-info">More Info</p>
         <div id="info-content" style="display: none;">
             <ul>
-                <li>This project is still in early stages of development. It works best to use simple and general queries.</li>
-                <li>The index size is relatively limited currently, but I'm working on indexing more content.</li>
-                <li>Right now it implements the <a href="https://en.wikipedia.org/wiki/Okapi_BM25" target="_blank">BM25</a> algorithm for ranking the results. I plan on adding better semantic search in the future.</li>
+                <li>This project is still in development. <i>Everything will be greatly expanded and improved soon.</i></li>
+                <li>Queries work best with simple and general keywords.</li>
+                <li>It currently implements the <a href="https://en.wikipedia.org/wiki/Okapi_BM25" target="_blank">BM25</a> algorithm for ranking the results.</li>
+                <li>The list of blogs to index is compiled from <a href="https://github.com/outcoldman/hackernews-personal-blogs" target="_blank">this list of HN blogs</a> and from <a href="https://ooh.directory/blogs/technology/" target="_blank">ooh's tech directory</a>.</li>
             </ul>
         </div>
     </div>
