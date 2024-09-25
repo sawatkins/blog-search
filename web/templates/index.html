@@ -48,6 +48,11 @@
             body { padding: 10px; }
             input[type="text"], input[type="submit"] { width: 100%; }
         }
+        pre {
+            background-color: #f9f9f9;
+            padding: 10px;
+            border-radius: 4px;
+        }
     </style>
 </head>
 <body>
@@ -62,7 +67,7 @@
         <p>Blog search is a search engine that focuses on indexing personal blog content, mainly in English.</p>
         <p>It's a personal project of mine. It currently indexes <strong>{{ posts_size or '_' }}</strong> pages.</p>
 
-        <div class="more-info">
+        <div class="more-info-container">
             <p style="cursor: pointer; text-decoration: underline;" id="toggle-info">More Info</p>
             <div id="info-content" style="display: none;">
                 <ul>
@@ -73,17 +78,42 @@
                 </ul>
             </div>
         </div>
+
+        <div class="api-container">
+            <p style="cursor: pointer; text-decoration: underline;" id="toggle-api">API</p>
+            <div id="api-content" style="display: none; margin-left: 20px;">
+                <pre><code>GET /api?q={query}</code></pre>
+                <p>Returns: JSON object with search results array, or an empty array if no results are found.</p>
+                <pre><code>{
+  "results": [
+    {
+      "link": "https://example.com/blog-post",
+      "title": "Example Blog Post",
+      "date": "2023-04-15",
+      "snippet": "Post content snippet..."
+    },
+    // More results...
+  ]
+}</code></pre>
+
+                <p>Example Usage:</p>
+                <pre><code># Python
+r = requests.get("https://blog-search.fly.dev/api", params={"q": "your search query"})
+results = r.json()["results"]</code></pre>
+            </div>
+        </div>
     </div>
 
     <script>
-        document.getElementById('toggle-info').addEventListener('click', function() {
-            var infoContent = document.getElementById('info-content');
-            if (infoContent.style.display === 'none') {
-                infoContent.style.display = 'block';
-            } else {
-                infoContent.style.display = 'none';
-            }
-        });
+        function setupToggle(toggleId, contentId) {
+            document.getElementById(toggleId).addEventListener('click', function() {
+                var content = document.getElementById(contentId);
+                content.style.display = content.style.display === 'none' ? 'block' : 'none';
+            });
+        }
+
+        setupToggle('toggle-info', 'info-content');
+        setupToggle('toggle-api', 'api-content');
 
         document.getElementById('search-form').addEventListener('submit', function(event) {
             event.preventDefault();
