@@ -8,7 +8,6 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Ubuntu:ital,wght@0,400;0,700;1,400;1,700&display=swap" rel="stylesheet">
-    <script src="https://unpkg.com/htmx.org@2.0.2" integrity="sha384-Y7hw+L/jvKeWIRRkqWYfPcvVxHzVzn5REgzbawhxAuQGwX1XWe70vji+VSeHOThJ" crossorigin="anonymous"></script>
     <style>
         body { 
             font-family: 'Ubuntu', Arial, sans-serif; 
@@ -53,7 +52,7 @@
 </head>
 <body>
     <h1><a href="/" style="text-decoration: none; color: inherit;">Blog Search</a></h1>
-    <form hx-post="/search" hx-target="#search-results" hx-swap="outerHTML" id="search-form" hx-trigger="submit">
+    <form id="search-form">
         <input type="text" name="query" id="search-input" placeholder="Enter your search query" autofocus autocomplete="off" autocapitalize="off" value="{{ query or '' }}">
         <input type="submit" value="Search">
     </form>
@@ -86,16 +85,31 @@
             }
         });
 
-        // HTMX-compatible empty search prevention
-        htmx.on('#search-form', 'htmx:validateUrl', function(evt) {
+        document.getElementById('search-form').addEventListener('submit', function(event) {
+            event.preventDefault();
             var query = document.getElementById('search-input').value.trim();
             if (query === '') {
-                evt.preventDefault();
                 // Clear the input and focus it
                 document.getElementById('search-input').value = '';
                 document.getElementById('search-input').focus();
-                console.log('empty search');
+                console.log('Empty search prevented');
+                return;
             }
+
+            fetch('/search', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                },
+                body: 'query=' + encodeURIComponent(query)
+            })
+            .then(response => response.text())
+            .then(html => {
+                document.getElementById('search-results').outerHTML = html;
+            })
+            .catch(error => {
+                console.error('Error:', error);
+            });
         });
     </script>
 </body>

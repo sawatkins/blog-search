@@ -4,9 +4,12 @@
         <p style="font-size: 0.9rem;">Found {{ results|length }} results. {{ time }} seconds.</p>
         {% for post in results[:5] %}
             <div class="result">
-                <p><a href="{{ post.url }}" target="_blank">{{ post.url }}</a></p>
-                <h3>{{ post.title[:90] }}</h3>
-                <p><strong style="font-size: 0.9rem;">{{ post.date }}</strong> {{ post.text[:150] }}...</p>
+                <p><a href="{{ post.url|default('#') }}" target="_blank">{{ post.url|default('No URL available') }}</a></p>
+                <h3>{{ post.title[:90] if post.title else 'untitled' }}</h3>
+                <p>
+                    <strong style="font-size: 0.9rem;">{{ post.date|default('') }}</strong>
+                    {{ post.text[:150] + '...' if post.text else 'No text available' }}
+                </p>
             </div>
         {% endfor %}
     {% else %}
