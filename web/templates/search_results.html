@@ -1,0 +1,15 @@
+<div id="search-results">
+    <h2>Search Results</h2>
+    {% if results %}
+        <p style="font-size: 0.9rem;">Found {{ results|length }} results. {{ time }} seconds.</p>
+        {% for post in results[:5] %}
+            <div class="result">
+                <p><a href="{{ post.url }}" target="_blank">{{ post.url }}</a></p>
+                <h3>{{ post.title[:90] }}</h3>
+                <p><strong style="font-size: 0.9rem;">{{ post.date }}</strong> {{ post.text[:150] }}...</p>
+            </div>
+        {% endfor %}
+    {% else %}
+        <p>No results found.</p>
+    {% endif %}
+</div>
