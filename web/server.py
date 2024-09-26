@@ -1,7 +1,7 @@
 import time
-from fastapi import FastAPI, Request, Form # type: ignore
+from fastapi import FastAPI, Request, Form, Query, HTTPException  # Add this import # type: ignore
 from fastapi.templating import Jinja2Templates # type: ignore
-from fastapi.responses import HTMLResponse, PlainTextResponse # type: ignore
+from fastapi.responses import HTMLResponse, PlainTextResponse, JSONResponse  # type: ignore
 from search_engine import SearchEngine
 import os
 
@@ -32,6 +32,27 @@ async def search(request: Request, query: str = Form(...)):
         "query": query,
         "time": round(end_time - start_time, 2)
     })
+
+@app.get("/api", response_class=JSONResponse)
+async def api(q: str = Query(...)):
+    #TODO: checck if q is actual text (ex. quotes will pass as valid input)
+    if not q.strip():
+        return JSONResponse({"results": []})
+    
+    try:
+        results = search_engine.search(q)
+        api_results = []
+        for result in results[:5]:  # Limit to 5 results
+            api_results.append({
+                "url": result['url'] if 'url' in result else '',
+                "title": result['title'] if 'title' in result else '',
+                "date": result['date'] if 'date' in result else '',
+                "snippet": result['text'][:100] if 'text' in result else ''
+            })
+        return JSONResponse({"results": api_results})
+    except Exception as e:
+        print(f"An error occurred: {str(e)}")
+        raise HTTPException(status_code=500, detail="Internal server error: " + str(e))
 
 @app.get("/robots.txt", response_class=PlainTextResponse)
 async def robots():

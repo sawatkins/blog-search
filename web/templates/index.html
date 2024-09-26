@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -7,29 +8,33 @@
     <meta name="robots" content="noindex, nofollow">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Ubuntu:ital,wght@0,400;0,700;1,400;1,700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Ubuntu:ital,wght@0,400;0,700;1,400;1,700&display=swap"
+        rel="stylesheet">
     <style>
-        body { 
-            font-family: 'Ubuntu', Arial, sans-serif; 
-            max-width: 800px; 
-            margin: 0 auto; 
+        body {
+            font-family: 'Ubuntu', Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
             padding: 20px;
             /* line-height: 1.6; */
         }
-        form { 
-            margin-bottom: 20px; 
+
+        form {
+            margin-bottom: 20px;
             display: flex;
             flex-wrap: wrap;
             gap: 10px;
         }
-        input[type="text"] { 
+
+        input[type="text"] {
             flex-grow: 1;
-            padding: 10px; 
+            padding: 10px;
             font-size: 16px;
             border: 1px solid #ccc;
             border-radius: 4px;
         }
-        input[type="submit"] { 
+
+        input[type="submit"] {
             padding: 10px 20px;
             font-size: 16px;
             background-color: #f0f0f0;
@@ -37,29 +42,60 @@
             border-radius: 4px;
             cursor: pointer;
         }
-        .result { 
-            margin-bottom: 12px; 
-            border-bottom: 1px solid #ccc; 
-            padding-bottom: 12px; 
+
+        .result {
+            margin-bottom: 12px;
+            border-bottom: 1px solid #ccc;
+            padding-bottom: 12px;
         }
-        .result h3 { margin: 6px 0; }
-        .result p { margin: 6px 0; }
-        @media (max-width: 600px) {
-            body { padding: 10px; }
-            input[type="text"], input[type="submit"] { width: 100%; }
+
+        .result h3 {
+            margin: 6px 0;
         }
+
+        .result p {
+            margin: 6px 0;
+        }
+
+        #api-content {
+            margin-left: 20px;
+            margin-right: 20px;
+        }
+
         pre {
-            background-color: #f9f9f9;
+            background-color: #efefef;
             padding: 10px;
             border-radius: 4px;
         }
+
+        #search-button {
+            color: #000;
+        }
+
+        @media (max-width: 600px) {
+            body {
+                padding: 10px;
+            }
+
+            input[type="text"],
+            input[type="submit"] {
+                width: 100%;
+            }
+
+            #api-content {
+                margin-left: 0px;
+                margin-right: 0px;
+            }
+        }
     </style>
 </head>
+
 <body>
     <h1><a href="/" style="text-decoration: none; color: inherit;">Blog Search</a></h1>
     <form id="search-form">
-        <input type="text" name="query" id="search-input" placeholder="Enter your search query" autofocus autocomplete="off" autocapitalize="off" value="{{ query or '' }}">
-        <input type="submit" value="Search">
+        <input type="text" name="query" id="search-input" placeholder="Enter your search query" autofocus
+            autocomplete="off" autocapitalize="off" value="{{ query or '' }}">
+        <input type="submit" value="Search" id="search-button">
     </form>
 
     <div id="search-results">
@@ -71,23 +107,28 @@
             <p style="cursor: pointer; text-decoration: underline;" id="toggle-info">More Info</p>
             <div id="info-content" style="display: none;">
                 <ul>
-                    <li>This project is still in development. <i>Everything will be greatly expanded and improved soon.</i></li>
+                    <li>This project is still in development. <i>Everything will be greatly expanded and improved
+                            soon.</i></li>
                     <li>Queries work best with simple and general keywords.</li>
-                    <li>It currently implements the <a href="https://en.wikipedia.org/wiki/Okapi_BM25" target="_blank">BM25</a> algorithm for ranking the results.</li>
-                    <li>The list of blogs to index is compiled from <a href="https://github.com/outcoldman/hackernews-personal-blogs" target="_blank">this list of HN blogs</a> and from <a href="https://ooh.directory/blogs/technology/" target="_blank">ooh's tech directory</a>.</li>
+                    <li>It currently implements the <a href="https://en.wikipedia.org/wiki/Okapi_BM25"
+                            target="_blank">BM25</a> algorithm for ranking the results.</li>
+                    <li>The list of blogs to index is compiled from <a
+                            href="https://github.com/outcoldman/hackernews-personal-blogs" target="_blank">this list of
+                            HN blogs</a> and from <a href="https://ooh.directory/blogs/technology/"
+                            target="_blank">ooh's tech directory</a>.</li>
                 </ul>
             </div>
         </div>
 
         <div class="api-container">
             <p style="cursor: pointer; text-decoration: underline;" id="toggle-api">API</p>
-            <div id="api-content" style="display: none; margin-left: 20px;">
+            <div id="api-content" style="display: none;">
                 <pre><code>GET /api?q={query}</code></pre>
-                <p>Returns: JSON object with search results array, or an empty array if no results are found.</p>
+                <p>Returns: JSON object with an array of search results, or an empty array if no results are found.</p>
                 <pre><code>{
   "results": [
     {
-      "link": "https://example.com/blog-post",
+      "url": "https://example.com/blog-post",
       "title": "Example Blog Post",
       "date": "2023-04-15",
       "snippet": "Post content snippet..."
@@ -97,7 +138,7 @@
 }</code></pre>
 
                 <p>Example Usage:</p>
-                <pre><code># Python
+                <pre><code style="white-space: pre-wrap;"># Python
 r = requests.get("https://blog-search.fly.dev/api", params={"q": "your search query"})
 results = r.json()["results"]</code></pre>
             </div>
@@ -106,7 +147,7 @@ results = r.json()["results"]</code></pre>
 
     <script>
         function setupToggle(toggleId, contentId) {
-            document.getElementById(toggleId).addEventListener('click', function() {
+            document.getElementById(toggleId).addEventListener('click', function () {
                 var content = document.getElementById(contentId);
                 content.style.display = content.style.display === 'none' ? 'block' : 'none';
             });
@@ -115,7 +156,7 @@ results = r.json()["results"]</code></pre>
         setupToggle('toggle-info', 'info-content');
         setupToggle('toggle-api', 'api-content');
 
-        document.getElementById('search-form').addEventListener('submit', function(event) {
+        document.getElementById('search-form').addEventListener('submit', function (event) {
             event.preventDefault();
             var query = document.getElementById('search-input').value.trim();
             if (query === '') {
@@ -133,14 +174,15 @@ results = r.json()["results"]</code></pre>
                 },
                 body: 'query=' + encodeURIComponent(query)
             })
-            .then(response => response.text())
-            .then(html => {
-                document.getElementById('search-results').outerHTML = html;
-            })
-            .catch(error => {
-                console.error('Error:', error);
-            });
+                .then(response => response.text())
+                .then(html => {
+                    document.getElementById('search-results').outerHTML = html;
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                });
         });
     </script>
 </body>
+
 </html>
