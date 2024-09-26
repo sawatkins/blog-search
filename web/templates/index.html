@@ -166,6 +166,7 @@ results = r.json()["results"]</code></pre>
                 console.log('Empty search prevented');
                 return;
             }
+            document.getElementById('search-input').blur();
 
             fetch('/search', {
                 method: 'POST',
