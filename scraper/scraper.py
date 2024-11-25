@@ -1,4 +1,6 @@
+from dataclasses import dataclass
 from datetime import datetime
+import os
 import queue
 import time
 import json
@@ -13,9 +15,61 @@ from urllib.robotparser import RobotFileParser
 import threading
 import requests
 from urllib.error import URLError
+import xml.etree.ElementTree as ElementTree
 import concurrent.futures
 from concurrent.futures import ThreadPoolExecutor, as_completed, TimeoutError
 from requests.exceptions import RequestException
+
+
+@dataclass(frozen=True)
+class Feed:
+    httpUrl: str = ""
+    xmlUrl: str = ""
+
+class Scraper:
+    def __init__(self, db_name='pages_v2.db', feeds_directory='feeds') -> None:
+        self.db_name = db_name
+        self.conn = sqlite3.connect(self.db_name)
+        self.cursor = self.conn.cursor()
+        self.feeds_directory = feeds_directory
+        self.feeds_save_file = 'feeds.txt'
+        self.init_db
+    
+    def init_db(self) -> None:
+        self.cursor.execute('''
+        CREATE TABLE IF NOT EXISTS pages (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            title TEXT,
+            url TEXT,
+            fingerprint TEXT UNIQUE,
+            date TEXT,
+            text TEXT,
+            scraped_on_date TEXT
+        )
+        ''')
+        self.conn.commit()
+    
+    def extract_feeds_from_ompl_files(self) -> None:
+        feeds_dir = os.path.join(os.path.dirname(__file__), self.feeds_directory)
+        feeds = set()  
+        for filename in os.listdir(feeds_dir):
+            if filename.endswith('.ompl'):
+                file_path = os.path.join(feeds_dir, filename)
+                tree = ElementTree.parse(file_path)
+                root = tree.getroot()
+                for outline in root.findall('.//outline'):
+                    xml_url = outline.get('xmlUrl')
+                    html_url = outline.get('htmlUrl')
+                    if xml_url and html_url:
+                        feed = Feed(httpUrl=html_url, xmlUrl=xml_url)
+                        feeds.add(feed)  
+                        
+        feeds_save_file_dir = os.path.join(os.path.dirname(__file__), self.feeds_save_file)
+        with open(feeds_save_file_dir, 'w') as f:
+            for url in sorted(feeds, key=lambda feed: feed.httpUrl):
+                f.write(f"{url}\n")
+        
+        
 
 def read_urls(file_path):
     with open(file_path, 'r') as file:
@@ -35,22 +89,6 @@ def load_posts_from_json(filename="all_posts.json"):
     with open(filename, 'r', encoding='utf-8') as f:
         return json.load(f)
 
-def init_db(db_name='pages.db'):
-    conn = sqlite3.connect(db_name)
-    cursor = conn.cursor()
-    cursor.execute('''
-    CREATE TABLE IF NOT EXISTS pages (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        title TEXT,
-        url TEXT,
-        fingerprint TEXT UNIQUE,
-        date TEXT,
-        text TEXT,
-        scraped_on_date TEXT
-    )
-    ''')
-    conn.commit()
-    return conn
        
 def save_all_posts_to_db(pages, conn):
     cursor = conn.cursor()
@@ -169,7 +207,6 @@ def get_db_urls(db_name):
     conn.close()
     return db_urls
 
-
 def main():
     # feeds = read_urls("feed_urls.txt")
     
@@ -279,11 +316,13 @@ def main():
     print('consumer joined')
 
 if __name__ == "__main__":
-    start_scraping = input("Are you sure you want to start scraping? (yes/no): ")
-    if start_scraping.lower() != "yes":
-        print("Scraping cancelled.")
-        exit()
-    start_time = time.time()
-    main()
-    end_time = time.time()
-    print(f"Time taken: {round(end_time - start_time)} seconds")
+    # start_scraping = input("Are you sure you want to start scraping? (yes/no): ")
+    # if start_scraping.lower() != "yes":
+    #     print("Scraping cancelled.")
+    #     exit()
+    # start_time = time.time()
+    # main()
+    # end_time = time.time()
+    # print(f"Time taken: {round(end_time - start_time)} seconds")
+    scraper = Scraper()
+    scraper.extract_feeds_from_ompl_files()
