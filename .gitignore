@@ -6,3 +6,5 @@ backup-venv/
 __pycache__/
 backup/
 data/
+venv
+.env
