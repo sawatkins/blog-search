@@ -21,27 +21,6 @@ class SearchEngine:
             self.size = self.get_db_size()
         except (Exception, Error) as error:
             print("Error while connecting to PostgreSQL:", error)
-        
-        
-        # self.db_name = db_name
-        # self.posts = self.load_posts_from_db()
-        # self.posts_size = len(self.posts)
-        # self.index = defaultdict(dict)
-        # self.doc_lengths = {}
-        # self.avg_doc_length = 0
-        # self.total_docs = len(self.posts)
-        # self.create_index()
-
-    # def load_posts_from_db(self):
-    #     conn = sqlite3.connect(os.path.join(os.path.dirname(__file__), '../data/', self.db_name))
-    #     cursor = conn.cursor()
-    #     cursor.execute('SELECT title, url, date, text FROM pages')
-    #     posts = [
-    #         {'title': row[0], 'url': row[1], 'date': row[2], 'text': row[3]}
-    #         for row in cursor.fetchall()
-    #     ]
-    #     conn.close()
-    #     return posts
     
     def get_db_size(self):
         with self.connection.cursor() as cursor:

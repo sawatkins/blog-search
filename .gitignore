@@ -8,3 +8,4 @@ backup/
 data/
 venv
 .env
+transfer.py

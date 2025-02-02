@@ -121,7 +121,7 @@
 
     <div id="search-results">
         <h2>About</h2>
-        <p>Blog search is a search engine that focuses on indexing personal blog content, mainly in English.</p>
+        <p>Blog search is a search engine focused on indexing personal blog content, mainly in English.</p>
         <p>It's a personal project of mine. It currently indexes <strong>{{ posts_size or '_' }}</strong> pages.</p>
 
         <div class="more-info-container">
@@ -130,9 +130,8 @@
                 <ul>
                     <li>This project is still in development. <i>Everything will be greatly expanded and improved
                             soon.</i></li>
-                    <li>Queries work best with simple and general keywords.</li>
-                    <li>It currently implements the <a href="https://en.wikipedia.org/wiki/Okapi_BM25"
-                            target="_blank">BM25</a> algorithm for ranking the results.</li>
+                    <li>Queries work best with correctly spelled general keywords.</li>
+                    <li>It currently uses PostgreSQL's full text search for indexing and ranking.</li>
                     <li>The list of blogs to index is compiled from <a
                             href="https://github.com/outcoldman/hackernews-personal-blogs" target="_blank">this list of
                             HN blogs</a> and from <a href="https://ooh.directory/blogs/technology/"

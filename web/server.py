@@ -1,7 +1,7 @@
 import time
-from fastapi import FastAPI, Request, Form, Query, HTTPException  # Add this import # type: ignore
-from fastapi.templating import Jinja2Templates # type: ignore
-from fastapi.responses import HTMLResponse, PlainTextResponse, JSONResponse  # type: ignore
+from fastapi import FastAPI, Request, Form, Query, HTTPException 
+from fastapi.templating import Jinja2Templates 
+from fastapi.responses import HTMLResponse, PlainTextResponse, JSONResponse  
 from search_engine import SearchEngine
 import os
 
@@ -14,7 +14,7 @@ search_engine = SearchEngine()
 async def home(request: Request):
     return templates.TemplateResponse("index.html", {
         "request": request,
-        "posts_size": search_engine.posts_size
+        "posts_size": search_engine.size
     })
 
 @app.post("/search", response_class=HTMLResponse)
