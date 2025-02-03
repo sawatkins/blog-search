@@ -73,13 +73,11 @@ class SearchEngine:
         
         with self.connection.cursor() as cursor:
             sql = """
-                SELECT title, url, date, text,
-                    ts_rank(to_tsvector('english', title || ' ' || text), 
-                           phraseto_tsquery('english', %s)) as rank
-                FROM pages_old 
-                WHERE to_tsvector('english', title || ' ' || text) @@ 
-                      phraseto_tsquery('english', %s)
-                ORDER BY rank DESC 
+                SELECT title, url,
+                    ts_rank_cd(page_tsv, phraseto_tsquery('english', %s)) as rank
+                FROM pages_old
+                WHERE page_tsv @@ phraseto_tsquery('english', %s)
+                ORDER BY rank DESC
                 LIMIT 10
             """
             cursor.execute(sql, (query_words, query_words))
