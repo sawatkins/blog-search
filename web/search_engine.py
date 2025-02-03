@@ -1,15 +1,18 @@
-from collections import defaultdict
 from dotenv import load_dotenv
-import sqlite3
 import re
 import os
-import math
+import sys
 import psycopg2
 from psycopg2 import Error
 
 class SearchEngine:
     def __init__(self, db_name='pages.db'):
         load_dotenv()
+        self.connection: psycopg2.extensions.connection
+        self.connect()
+        self.size = self.get_db_size()
+
+    def connect(self):
         try:
             self.connection = psycopg2.connect(
                 host=os.getenv('PGHOST'),
@@ -18,11 +21,19 @@ class SearchEngine:
                 password=os.getenv('PGPASSWORD'),
                 port="5432"
             )
-            self.size = self.get_db_size()
         except (Exception, Error) as error:
             print("Error while connecting to PostgreSQL:", error)
-    
+            sys.exit(1)
+
+    def ensure_connection(self):
+        try:
+            with self.connection.cursor() as cursor:
+                cursor.execute('SELECT 1')
+        except (Exception, Error):
+            self.connect()
+
     def get_db_size(self):
+        self.ensure_connection()
         with self.connection.cursor() as cursor:
             cursor.execute('SELECT COUNT(*) FROM pages_old')
             result = cursor.fetchone()
@@ -33,40 +44,8 @@ class SearchEngine:
             return ''
         return re.sub(r'\s+', ' ', text.replace('\n', ' '), flags=re.MULTILINE).strip().lower()
 
-    # def create_index(self):
-    #     total_length = 0
-    #     for post_id, post in enumerate(self.posts):
-    #         title = self.clean_text(post['title'])
-    #         text = self.clean_text(post['text'])
-    #         words = title.split() + text.split()
-    #         doc_length = len(words)
-    #         self.doc_lengths[post_id] = doc_length
-    #         total_length += doc_length
-
-    #         word_freq = defaultdict(int)
-    #         for word in words:
-    #             word_freq[word] += 1
-
-    #         for word, freq in word_freq.items():
-    #             self.index[word][post_id] = freq
-
-    #     self.avg_doc_length = total_length / self.total_docs #does this work?
-    #     print(f"Indexed {self.total_docs} pages")
-
-    # def bm25_score(self, query_words, post_id):
-    #     k1 = 1.5
-    #     b = 0.75
-    #     score = 0
-    #     for word in query_words:
-    #         if word not in self.index or post_id not in self.index[word]:
-    #             continue
-    #         tf = self.index[word][post_id]
-    #         df = len(self.index[word])
-    #         idf = math.log((self.total_docs - df + 0.5) / (df + 0.5) + 1)
-    #         score += idf * ((tf * (k1 + 1)) / (tf + k1 * (1 - b + b * (self.doc_lengths[post_id] / self.avg_doc_length))))
-    #     return score
-
     def search(self, query):
+        self.ensure_connection()
         query_words = self.clean_text(query)
         if not query_words:
             return []
