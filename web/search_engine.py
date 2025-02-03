@@ -73,7 +73,7 @@ class SearchEngine:
         
         with self.connection.cursor() as cursor:
             sql = """
-                SELECT title, url,
+                SELECT title, url, date, text,
                     ts_rank_cd(page_tsv, phraseto_tsquery('english', %s)) as rank
                 FROM pages_old
                 WHERE page_tsv @@ phraseto_tsquery('english', %s)
