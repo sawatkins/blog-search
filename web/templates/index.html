@@ -6,19 +6,28 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Blog Search</title>
     <meta name="robots" content="noindex, nofollow">
-    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <!-- <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Ubuntu:ital,wght@0,400;0,700;1,400;1,700&display=swap"
+        rel="stylesheet"> -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&display=swap"
         rel="stylesheet">
+
+
     <style>
         body {
-            font-family: 'Ubuntu', Arial, sans-serif;
-            max-width: 800px;
+            font-family: 'Inter', Arial, sans-serif;
+            max-width: 700px;
             margin: 0 auto;
             padding: 20px;
             /* line-height: 1.6; */
-            background-color: #dcdfe3;
-            color: #2e2e2e;
+            background-color: #eeedea;
+            /* #dcdfe3; */
+            color: rgba(0, 0, 0, 0.8);
+            /* #2e2e2e; */
         }
 
         form {
@@ -35,7 +44,8 @@
             border: 1px solid #999999;
             border-radius: 4px;
             background-color: #f1f1f1;
-            color: #2e2e2e;
+            color: inherit;
+            /* #2e2e2e; */
         }
 
         input[type="text"]:focus {
@@ -50,7 +60,7 @@
             border: 1px solid #999999;
             border-radius: 4px;
             cursor: pointer;
-            color: #2e2e2e;
+            color: inherit;
         }
 
         .result {
@@ -112,7 +122,18 @@
 </head>
 
 <body>
-    <h1><a href="/" style="text-decoration: none; color: inherit;">Blog Search</a></h1>
+    <div style="display: flex; align-items: center; justify-content: space-between;">
+        <h1 style="align-self: flex-end; margin-bottom: 21.5px;"><a href="/" style="text-decoration: none; color: inherit;">Blog Search</a></h1>
+        <pre id="results-count" style="background-color: inherit; margin-top: 0;">
+                    v  ~.    v
+        v           /|
+                   / |          v
+            v     /__|__
+                \--------/
+~^~^~^~^~^~^~^~^~`~~^~^~'~^~^~^~^~^~^~^~
+    ~~^~~^~^~~~^~~~^~~~^~~~^~^~~^~
+</pre>
+    </div>
     <form id="search-form">
         <input type="text" name="query" id="search-input" placeholder="Enter your search query" autofocus
             autocomplete="off" autocapitalize="off" value="{{ query or '' }}">
