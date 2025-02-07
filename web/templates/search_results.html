@@ -1,5 +1,6 @@
 <div id="search-results">
-    <h2>Search Results</h2>
+    <!-- <h2>Search Results</h2> -->
+    <p style="font-size: large; margin: 16px 0px;"><strong>Search Results</strong></p>
     {% if results %}
         <p style="font-size: 0.9rem;">Found {{ results|length }} results. {{ time }} seconds.</p>
         {% for post in results[:5] %}

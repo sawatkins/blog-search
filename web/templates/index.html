@@ -141,12 +141,14 @@
     </form>
 
     <div id="search-results">
-        <h2>About</h2>
+        <!-- <h3>About</h3> -->
+        <p style="font-size: large; margin: 16px 0px;"><strong>About</strong></p>
         <p>Blog search is a search engine focused on indexing personal blog content, mainly in English.</p>
         <p>It's a personal project of mine. It currently indexes <strong>{{ posts_size or '_' }}</strong> pages.</p>
+        <div style="margin-top: 20px;"></div>
 
         <div class="more-info-container">
-            <p style="cursor: pointer; text-decoration: underline;" id="toggle-info">More Info</p>
+            <p id="toggle-info"><span style="cursor: pointer; color: #EAEEED; background-color:#52718f; padding: 3px 6px; font-weight: bold;">More Information</span></p>
             <div id="info-content" style="display: none;">
                 <ul>
                     <li>This project is still in development. <i>Everything will be greatly expanded and improved
@@ -161,8 +163,17 @@
             </div>
         </div>
 
+        <div class="feedback-container">
+            <p id="toggle-feedback"><span style="cursor: pointer; color: #EAEEED; background-color: #e67856; padding: 3px 6px; font-weight: bold;">Feedback</span></p>
+            <div id="feedback-content" style="display: none;">
+                <ul>
+                    <li>Coming soon...</li>
+                </ul>
+            </div>
+        </div>
+
         <div class="api-container">
-            <p style="cursor: pointer; text-decoration: underline;" id="toggle-api">API</p>
+            <p id="toggle-api"><span style="cursor: pointer;  color: #EAEEED; background-color:#88b39b; padding: 3px 6px; font-weight: bold;">API</span></p>
             <div id="api-content" style="display: none;">
                 <pre><code>GET /api?q={query}</code></pre>
                 <p>Returns: JSON object with an array of search results, or an empty array if no results are found.</p>
@@ -195,6 +206,7 @@ results = r.json()["results"]</code></pre>
         }
 
         setupToggle('toggle-info', 'info-content');
+        setupToggle('toggle-feedback', 'feedback-content');
         setupToggle('toggle-api', 'api-content');
 
         document.getElementById('search-form').addEventListener('submit', function (event) {
