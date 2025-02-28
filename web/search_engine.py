@@ -57,7 +57,7 @@ class SearchEngine:
                 FROM pages_old
                 WHERE page_tsv @@ phraseto_tsquery('english', %s)
                 ORDER BY rank DESC
-                LIMIT 10
+                LIMIT 100
             """
             cursor.execute(sql, (query_words, query_words))
             results = cursor.fetchall()
@@ -65,7 +65,7 @@ class SearchEngine:
             return [
                 {
                     'title': row[0],
-                    'url': row[1],
+                    'url': row[1].strip("/"),
                     'date': row[2],
                     'text': row[3]
                 }
