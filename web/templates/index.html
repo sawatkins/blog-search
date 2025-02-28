@@ -215,6 +215,14 @@ results = r.json()["results"]</code></pre>
                 return;
             }
             document.getElementById('search-input').blur();
+            
+            // Clear search results and show loading indicator
+            const searchResults = document.getElementById('search-results');
+            searchResults.innerHTML = `
+                <div class="loading-container" style="text-align: center; padding: 30px 0;">
+                    <div class="loading-spinner" style="display: inline-block; width: 30px; height: 30px; border: 3px solid rgba(0,0,0,0.1); border-radius: 50%; border-top-color: #52718f; animation: spin 0.35s ease-in-out infinite;"></div>
+                </div>
+            `;
 
             fetch('/search', {
                 method: 'POST',
@@ -229,9 +237,21 @@ results = r.json()["results"]</code></pre>
                 })
                 .catch(error => {
                     console.error('Error:', error);
+                    document.getElementById('search-results').innerHTML = `
+                        <div style="text-align: center; padding: 20px;">
+                            <p style="color: #e67856; font-weight: bold;">Error loading results</p>
+                            <p>Please try again later.</p>
+                        </div>
+                    `;
                 });
         });
     </script>
+
+    <style>
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+    </style>
 </body>
 
 </html>
