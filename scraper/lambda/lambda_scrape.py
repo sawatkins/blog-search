@@ -12,9 +12,20 @@ def lambda_handler(event, context):
                 'body': json.dumps(f"Failed to download content from {url}")
             }
         
-        extracted_text = trafilatura.extract(downloaded_content)
-        metadata = trafilatura.extract_metadata(downloaded_content)
+        if not trafilatura.is_probably_readerable(downloaded_content):
+            return {
+                'statusCode': 400,
+                'body': json.dumps(f"Downloaded content in {url} does not look like a blog")
+            }
         
+        extracted_text = trafilatura.extract(downloaded_content, with_metadata=True)
+        if not extracted_text:
+            return {
+                'statusCode': 400,
+                'body': json.dumps(f"Could not extract any text for {url}")
+            }
+
+        metadata = trafilatura.extract_metadata(downloaded_content)
         result = {
             'url': url,
             'content': extracted_text,
