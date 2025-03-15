@@ -11,3 +11,4 @@ venv
 transfer.py
 archive_scraper.py
 .aider*
+prev_smallweb.txt

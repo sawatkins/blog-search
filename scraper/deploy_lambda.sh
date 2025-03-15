@@ -1,6 +1,5 @@
 #!/bin/bash
 
-# Configuration - change these values
 FUNCTION_NAME="blogsearch_scrape_url"
 LAMBDA_DIR="./lambda"
 REGION="us-west-2"

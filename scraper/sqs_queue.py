@@ -5,6 +5,7 @@ from dotenv import load_dotenv
 
 class SQSQueue:
     def __init__(self, queue_name='blogsearch-to-scrape') -> None:
+        #todo: put in seperate function with try/catch
         self.sqs = boto3.resource(
             'sqs',
             region_name='us-west-2',
