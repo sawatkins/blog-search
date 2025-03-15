@@ -10,3 +10,4 @@ venv
 .env
 transfer.py
 archive_scraper.py
+.aider*

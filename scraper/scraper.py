@@ -2,12 +2,14 @@ import sys
 import os
 from dotenv import load_dotenv
 import psycopg2
+from sqs_queue import SQSQueue
 
 class Scraper:
     def __init__(self, db_name='pages') -> None:
         self.connection: psycopg2.extensions.connection
+        self.sqs_queue = SQSQueue()
         self.connect_db()
-        self.init_db()
+        self.init_db(db_name)
 
     def connect_db(self) -> None:
         try:
@@ -22,11 +24,11 @@ class Scraper:
             print("Error while connecting to PostgreSQL:", error)
             sys.exit(1)
 
-    def init_db(self) -> None:
+    def init_db(self, db_name) -> None:
         try:
             cursor = self.connection.cursor()
             cursor.execute(f"""
-                CREATE TABLE IF NOT EXISTS {self.db_name} (
+                CREATE TABLE IF NOT EXISTS {db_name} (
                     id SERIAL PRIMARY KEY,
                     title TEXT,
                     url TEXT,
@@ -47,4 +49,4 @@ if __name__ == "__main__":
     print("starting scraper...")
     load_dotenv()
     scraper = Scraper()
-    print("connected to db")
+    print("connected to db and sqs")

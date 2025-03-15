@@ -4,15 +4,14 @@ import os
 from dotenv import load_dotenv
 
 class SQSQueue:
-    def __init__(self) -> None:
-        load_dotenv()
+    def __init__(self, queue_name='blogsearch-to-scrape') -> None:
         self.sqs = boto3.resource(
             'sqs',
             region_name='us-west-2',
             aws_access_key_id=os.environ.get('AWS_ACCESS_KEY_ID'),
             aws_secret_access_key=os.environ.get('AWS_SECRET_ACCESS_KEY')
         )
-        self.queue = self.sqs.get_queue_by_name(QueueName='blogsearch-to-scrape')
+        self.queue = self.sqs.get_queue_by_name(QueueName=queue_name)
         print("queue:", self.queue.url)
     
     def send_message(self, url):
@@ -35,6 +34,7 @@ class SQSQueue:
     
 
 if __name__ == "__main__":
+    load_dotenv()
     q = SQSQueue()
     m = "hello world! this works!!"
     q.send_message(m)
