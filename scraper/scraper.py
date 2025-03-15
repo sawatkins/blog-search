@@ -25,8 +25,8 @@ class Scraper:
     def init_db(self) -> None:
         try:
             cursor = self.connection.cursor()
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS pages (
+            cursor.execute(f"""
+                CREATE TABLE IF NOT EXISTS {self.db_name} (
                     id SERIAL PRIMARY KEY,
                     title TEXT,
                     url TEXT,
