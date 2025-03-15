@@ -23,7 +23,24 @@ class Scraper:
             sys.exit(1)
 
     def init_db(self) -> None:
-
+        try:
+            cursor = self.connection.cursor()
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS pages (
+                    id SERIAL PRIMARY KEY,
+                    title TEXT,
+                    url TEXT,
+                    fingerprint TEXT UNIQUE,
+                    date DATE,
+                    text TEXT,
+                    scraped_on_date TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+                );
+            """)
+            self.connection.commit()
+            cursor.close()
+        except (Exception, psycopg2.Error) as error:
+            print("Error while initializing database:", error)
+            sys.exit(1)
 
 
 if __name__ == "__main__":
