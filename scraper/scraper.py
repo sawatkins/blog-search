@@ -6,11 +6,11 @@ from sqs_queue import SQSQueue
 import fastfeedparser
 
 class Scraper:
-    def __init__(self, db_name='pages_test') -> None:
+    def __init__(self, db_name='') -> None:
         self.connection: psycopg2.extensions.connection
         self.sqs_queue = SQSQueue()
         self.connect_db()
-        self.init_db(db_name)
+        self.init_db()
 
     def connect_db(self) -> None:
         try:
@@ -25,14 +25,21 @@ class Scraper:
             print("Error while connecting to PostgreSQL:", error)
             sys.exit(1)
 
-    def init_db(self, db_name) -> None:
+    def init_db(self) -> None:
         try:
             cursor = self.connection.cursor()
             cursor.execute(f"""
-                CREATE TABLE IF NOT EXISTS {db_name} (
+                CREATE TABLE IF NOT EXISTS domains (
+                    domain TEXT PRIMARY KEY,
+                    last_feed_check DATE,
+                    date_added TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+                );
+
+                CREATE TABLE IF NOT EXISTS pages (
                     id SERIAL PRIMARY KEY,
                     title TEXT,
                     url TEXT,
+                    domain TEXT REFERENCES domains(domain),
                     fingerprint TEXT UNIQUE,
                     date DATE,
                     text TEXT,
