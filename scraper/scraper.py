@@ -4,6 +4,7 @@ from dotenv import load_dotenv
 import psycopg2
 from sqs_queue import SQSQueue
 import fastfeedparser
+import requests
 
 class Scraper:
     def __init__(self, db_name='') -> None:
@@ -11,6 +12,7 @@ class Scraper:
         self.sqs_queue = SQSQueue()
         self.connect_db()
         self.init_db()
+        self.smallweb_feeds = self.get_smallweb_feeds()
 
     def connect_db(self) -> None:
         try:
@@ -28,10 +30,12 @@ class Scraper:
     def init_db(self) -> None:
         try:
             cursor = self.connection.cursor()
-            cursor.execute(f"""
-                CREATE TABLE IF NOT EXISTS domains (
-                    domain TEXT PRIMARY KEY,
-                    last_feed_check DATE,
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS feeds (
+                    feed_url TEXT PRIMARY KEY,
+                    domain TEXT,
+                    last_check_date DATE,
+                    is_active BOOLEAN DEFAULT true,
                     date_added TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
                 );
 
@@ -39,7 +43,7 @@ class Scraper:
                     id SERIAL PRIMARY KEY,
                     title TEXT,
                     url TEXT,
-                    domain TEXT REFERENCES domains(domain),
+                    feed_url TEXT REFERENCES feeds(feed_url),
                     fingerprint TEXT UNIQUE,
                     date DATE,
                     text TEXT,
@@ -52,43 +56,37 @@ class Scraper:
             print("Error while initializing database:", error)
             sys.exit(1)
     
-    def get_new_smallweb_urls(self) -> list[str]:
-        smallweb_feed_url = "https://kagi.com/api/v1/smallweb/feed?limit=100"
-        feed = fastfeedparser.parse(smallweb_feed_url)
-        prev_smallweb_urls = self.get_prev_smallweb_urls()
-        new_urls = []
-
-        urls = [entry.link for entry in feed.entries]
-        print(len(urls))
-
-        new_urls = [url for url in urls if url not in prev_smallweb_urls]
-        print(f"Found {len(new_urls)} new URLs")
-
-        self.save_prev_smallweb_urls(urls)
-        return new_urls
-
-    def get_prev_smallweb_urls(self) -> list[str]:
-        filename = "prev_smallweb.txt"
-        urls = []
-        
+    def get_smallweb_feeds(self) -> list[str]:
+        feeds_file_url = 'https://raw.githubusercontent.com/kagisearch/smallweb/refs/heads/main/smallweb.txt'
         try:
-            if os.path.exists(filename):
-                with open(filename, 'r') as file:
-                    urls = [line.strip() for line in file]
-        except Exception as e:
-            print(f"Error reading {filename}: {e}")
+            response = requests.get(feeds_file_url)
+            response.raise_for_status()  
             
-        return urls
-
-    def save_prev_smallweb_urls(self, urls: list[str]) -> None:
-        filename = "prev_smallweb.txt"
-        
-        try:
-            with open(filename, 'w') as file:
-                for url in urls:
-                    file.write(f"{url.strip()}\n")
+            feeds = [line.strip().rstrip('/') for line in response.text.splitlines() if line.strip()]
+            return list(set(feeds))
+            
         except Exception as e:
-            print(f"Error writing to {filename}: {e}")
+            print(f"Error downloading feeds file: {e}")
+            return []
+    
+    def parse_feed_links(self):
+        for feed in self.smallweb_feeds[5000:5005]:
+            parsed_feed = fastfeedparser.parse(feed)
+            link = parsed_feed.feed.link
+            print(link)
+            print(len(parsed_feed.entries), "entries")
+    
+    def normalize_feed_url(self, url: str):
+    # Remove trailing slashes
+    #url = url.rstrip('/')
+      
+    # You might want to add more normalization logic:
+    # - Follow redirects to get canonical URL
+    # - Convert to HTTPS if available
+    # - Remove unnecessary query parameters
+        
+    #return url
+        pass
 
 
 if __name__ == "__main__":
@@ -97,4 +95,7 @@ if __name__ == "__main__":
     scraper = Scraper()
     print("connected to db and sqs")
 
-    scraper.get_new_smallweb_urls()
+    #scraper.get_new_smallweb_urls()
+    #feed = scraper.get_smallweb_feeds()
+    print(len(scraper.smallweb_feeds))
+    scraper.parse_feed_links()
