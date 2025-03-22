@@ -1,0 +1,21 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: blogsearch-deployment
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: blogsearch
+  template:
+    metadata:
+      labels:
+        app: blogsearch
+    spec:
+      containers:
+      - name: blogsearch
+        image: ghcr.io/sawatkins/blog-search/blogsearch:latest
+        ports:
+        - containerPort: 8000
+      imagePullSecrets:
+      - name: ghcr-secret
