@@ -17,5 +17,8 @@ spec:
         image: ghcr.io/sawatkins/blog-search/blogsearch:latest
         ports:
         - containerPort: 8000
+        envFrom:
+        - configMapRef:
+            name: blogsearch-config
       imagePullSecrets:
       - name: ghcr-secret
