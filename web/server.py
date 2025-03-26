@@ -1,5 +1,6 @@
 import time
 from fastapi import FastAPI, Request, Form, Query, HTTPException 
+from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates 
 from fastapi.responses import HTMLResponse, PlainTextResponse, JSONResponse  
 from search_engine import SearchEngine
@@ -8,6 +9,8 @@ import os
 app = FastAPI()
 templates_path = os.path.join(os.path.dirname(__file__), "templates")
 templates = Jinja2Templates(directory=templates_path)
+static_path = os.path.join(os.path.dirname(__file__), "static")
+app.mount("/static", StaticFiles(directory=static_path), name="static")
 search_engine = SearchEngine()
 
 @app.get("/", response_class=HTMLResponse)
