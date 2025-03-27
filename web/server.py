@@ -2,7 +2,7 @@ import time
 from fastapi import FastAPI, Request, Form, Query, HTTPException 
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates 
-from fastapi.responses import HTMLResponse, PlainTextResponse, JSONResponse  
+from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse, JSONResponse  
 from search_engine import SearchEngine
 import os
 
@@ -63,6 +63,10 @@ async def robots():
 User-agent: *
 Disallow: /
 """
+
+@app.get("/favicon.ico")
+async def favicon():
+    return FileResponse(os.path.join(static_path, "favicon.ico"))
 
 if __name__ == "__main__":
     import uvicorn # type: ignore
