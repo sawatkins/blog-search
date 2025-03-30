@@ -1,4 +1,4 @@
-name: Build & Push New Docker Image
+name: Build and Deploy
 
 on:
   push:
@@ -7,6 +7,7 @@ on:
 
 jobs:
   build_and_push:
+    name: Build and Push Image
     runs-on: ubuntu-latest
 
     steps:
@@ -29,3 +30,19 @@ jobs:
         run: |
           docker push ghcr.io/${{ github.repository }}/blogsearch:${{ github.sha }}
           docker push ghcr.io/${{ github.repository }}/blogsearch:latest
+  
+  deploy:
+    name: Deploy to Kubernetes
+    needs: build_and_push
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Deploy to Kubernetes
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USERNAME }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            kubectl rollout restart deployment/blogsearch-deployment
+            kubectl rollout status deployment/blogsearch-deployment
