@@ -15,7 +15,7 @@ body {
   width: 45%; 
   min-width: 750px; 
   margin: 15px auto;
-  padding: 15px;
+  padding: 1em;
   border: 1px solid #aaa;
   box-shadow: 2px 2px 5px #ccc;
   border-radius: 5px;
@@ -25,22 +25,36 @@ html {
   background-color: #eeeeee;
 }
 
+/* Global spacing adjustments */
+hr {
+  margin: 0.8rem 0;
+  border: 0;
+  border-top: 1px solid #ddd;
+}
+
 /* Headings */
 h2 {
   font-size: 1.45rem;
-  margin-bottom: 0.7em;
   letter-spacing: -0.02em;
 }
 
 h3 {
   font-size: 1.2rem;
-  margin: 1.2em 0 0.5em;
   letter-spacing: -0.01em;
+}
+
+/* Condensed headings */
+h2, h3 {
+  margin-top: 0.6rem;
+  margin-bottom: 0.4rem;
 }
 
 /* Link styles */
 a {
   color: #007bff;
+  display: inline-block;
+  padding: 0;
+  margin: 0;
 }
 
 /* Content spacing */
@@ -167,6 +181,169 @@ pre code {
   font-size: 0.8rem;
   font-weight: bold;
   letter-spacing: 0.02em;
+}
+
+/* Added Navbar Styles */
+#navbar {
+  margin-bottom: 0.4rem;
+}
+
+.navbar-logo {
+  display: inline-block;
+  vertical-align: middle;
+}
+
+.navbar-logo img {
+  display: inline;
+  vertical-align: middle;
+  width: 19px;
+  height: 19px;
+}
+
+.navbar-title {
+  display: inline;
+  vertical-align: middle;
+  font-size: 1.1rem;
+}
+
+.navbar-title span {
+  font-weight: normal;
+}
+
+.navbar-links {
+  display: inline;
+  vertical-align: middle;
+  margin-left: 10px;
+}
+
+/* Page separator */
+.separator {
+  margin: 0.8rem 0;
+}
+
+/* Content container */
+#content, #search-results {
+  margin-bottom: 0.8rem;
+}
+
+/* Search result styling */
+.search-result {
+  padding: 0.4rem 0;
+  border-bottom: 1px solid #eee;
+  margin-bottom: 0.4rem;
+}
+
+.search-result:last-child {
+  border-bottom: none;
+}
+
+.search-result-title {
+  font-weight: bold;
+  margin-bottom: 0.1rem;
+}
+
+.search-result-url {
+  color: #006621;
+  font-size: 0.85rem;
+  margin-bottom: 0.1rem;
+}
+
+.search-result-snippet {
+  font-size: 0.9rem;
+  color: #545454;
+}
+
+/* Search form */
+#search-form {
+  position: relative;
+  display: inline-block;
+}
+
+.search-submit-button {
+  position: absolute;
+  right: 5px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+
+.search-submit-button img {
+  vertical-align: middle;
+  margin-top: 1.25px;
+  width: 21px;
+  height: 21px;
+}
+
+/* Toggle containers */
+.toggle-container {
+  margin-top: 0.8rem;
+  margin-bottom: 0.8rem;
+}
+
+.toggle-button {
+  cursor: pointer;
+  color: #EAEEED;
+  padding: 3px 6px;
+  font-weight: bold;
+  display: inline-block;
+}
+
+.toggle-blue {
+  background-color: #52718f;
+}
+
+.toggle-orange {
+  background-color: #e67856;
+}
+
+.toggle-green {
+  background-color: #88b39b;
+}
+
+.toggle-content {
+  display: none;
+  margin-top: 0.3rem;
+  padding: 0.4rem 0;
+}
+
+.toggle-content ul {
+  margin: 0.3rem 0;
+}
+
+/* Loading spinner */
+.loading-container {
+  text-align: center;
+  padding: 30px 0;
+}
+
+.loading-spinner {
+  display: inline-block;
+  width: 30px;
+  height: 30px;
+  border: 3px solid rgba(0,0,0,0.1);
+  border-radius: 50%;
+  border-top-color: #52718f;
+  animation: spin 0.35s ease-in-out infinite;
+}
+
+/* Footer */
+.footer {
+  text-align: left;
+  /* margin-top: 0.8rem; */
+  /* padding-top: 0.5rem; */
+}
+
+/* Make content more condensed */
+#search-results p, #content p {
+  margin: 0.2rem 0;
+}
+
+#search-results ul, #content ul {
+  margin-top: 0.3rem;
+  margin-bottom: 0.3rem;
+  padding-left: 1.5rem;
 }
 
 /* Responsive styles */

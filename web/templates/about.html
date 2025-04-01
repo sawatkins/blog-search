@@ -22,10 +22,10 @@
 
 <body>
     <div id="navbar">
-        <div style="display: inline-block; vertical-align: middle;">
-            <img src="/static/img/sailboat.svg" alt="" width="19px" height="19px" style="display: inline; vertical-align: middle;">
-            <p style="display: inline; vertical-align: middle;">
-                <span style="font-size: 1.1rem">&nbsp;Blog<i><span style="font-weight: normal;">Search</span></i></span> &nbsp;&nbsp;
+        <div class="navbar-logo">
+            <img src="/static/img/sailboat.svg" alt="">
+            <p class="navbar-links">
+                <span class="navbar-title">&nbsp;Blog<i><span>Search</span></i></span> &nbsp;&nbsp;
                 
                 <a href="/">Home</a> &nbsp;&nbsp;
                 <a href="/api">API</a> &nbsp;&nbsp;
@@ -33,15 +33,15 @@
             </p>
         </div>
     </div>
-    <hr style="margin-bottom: 1.4rem;">
+    <hr class="separator">
 
     <div id="content">
         <h2 style="font-weight: 400;">About Blog Search</h2>
         <p>Blog Search is a search engine focused on indexing personal blog content in English. It currently indexes <strong>{{ posts_size or '_' }}</strong> blog posts.</p>
 
-        <div class="more-info-container">
-            <p><span id="toggle-info" style="cursor: pointer; color: #EAEEED; background-color:#52718f; padding: 3px 6px; font-weight: bold;">More Information</span></p>
-            <div id="info-content" style="display: none;">
+        <div class="toggle-container">
+            <p><span id="toggle-info" class="toggle-button toggle-blue">More Information</span></p>
+            <div id="info-content" class="toggle-content">
                 <ul>
                     <li>This project is still in development. <i>Everything will be greatly expanded and improved soon.</i> <a href="https://github.com/sawatkins/blog-search">GitHub.</a></li>
                     <li>Queries work best with correctly spelled general keywords.</li>
@@ -51,9 +51,9 @@
             </div>
         </div>
 
-        <div class="feedback-container">
-            <p><span id="toggle-feedback" style="cursor: pointer; color: #EAEEED; background-color: #e67856; padding: 3px 6px; font-weight: bold;">Feedback</span></p>
-            <div id="feedback-content" style="display: none;">
+        <div class="toggle-container">
+            <p><span id="toggle-feedback" class="toggle-button toggle-orange">Feedback</span></p>
+            <div id="feedback-content" class="toggle-content">
                 <ul>
                     <a href="https://tally.so/r/mBe7We">Feedback form</a>
                 </ul>

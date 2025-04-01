@@ -4,17 +4,19 @@
     {% if results %}
         <p style="font-size: 0.9rem;">Found {{ results|length }} results. {{ time }} seconds.</p>
         {% for post in results[:5] %}
-            <div class="result">
-                <p><a href="{{ post.url|default('#') }}" target="_blank">{{ post.url|default('No URL available') }}</a></p>
-                <h3>{{ post.title[:90] if post.title else 'untitled' }}</h3>
-                <p>
-                    <strong style="font-size: 0.9rem;">{{ post.date|default('') }}</strong>
+            <div class="search-result">
+                <div class="search-result-title">{{ post.title[:90] if post.title else 'untitled' }}</div>
+                <div class="search-result-url"><a href="{{ post.url|default('#') }}" target="_blank">{{ post.url|default('No URL available') }}</a></div>
+                <div class="search-result-snippet">
+                    {% if post.date %}<span style="font-size: 0.85rem; font-weight: bold;">{{ post.date }}</span> - {% endif %}
                     {{ post.text[:150] + '...' if post.text else 'No text available' }}
-                </p>
+                </div>
             </div>
         {% endfor %}
     {% else %}
-        <strong>No results found</strong>
-        <p>Try using correctly spelled general keywords</p>
+        <div class="search-result">
+            <strong>No results found</strong>
+            <p>Try using correctly spelled general keywords</p>
+        </div>
     {% endif %}
 </div>

@@ -22,10 +22,10 @@
 
 <body>
     <div id="navbar">
-        <div style="display: inline-block; vertical-align: middle;">
-            <img src="/static/img/sailboat.svg" alt="" width="19px" height="19px" style="display: inline; vertical-align: middle;">
-            <p style="display: inline; vertical-align: middle;">
-                <span style="font-size: 1.1rem">&nbsp;Blog<i><span style="font-weight: normal;">Search</span></i></span> &nbsp;&nbsp;
+        <div class="navbar-logo">
+            <img src="/static/img/sailboat.svg" alt="">
+            <p class="navbar-links">
+                <span class="navbar-title">&nbsp;Blog<i><span>Search</span></i></span> &nbsp;&nbsp;
                 
                 <a href="/">Home</a> &nbsp;&nbsp;
                 <a href="/api">API</a> &nbsp;&nbsp;
@@ -33,7 +33,7 @@
             </p>
         </div>
     </div>
-    <hr style="margin-bottom: 1.4rem;">
+    <hr class="separator">
 
     <div class="flexbox-center">
         <img src="/static/img/magnifying-glass-icon.svg" alt="" width="25px" height="25px">
@@ -41,10 +41,10 @@
     </div>
 
     <div id="search-input-wrapper" class="flexbox-center">
-        <form id="search-form" style="position: relative; display: inline-block;">
-            <input type="text" name="query" id="search-input" autocomplete="off" autocapitalize="off" autocorrect="off" placeholder="Enter your search query..." autofocus value="{{ query or '' }}" style="padding-right: 30px;">
-            <button type="submit" style="position: absolute; right: 5px; top: 50%; transform: translateY(-50%); background: none; border: none; cursor: pointer;">
-                <img src="/static/img/arrow-sm-right.svg" alt="" width="21px" height="21px" style="vertical-align: middle; margin-top: 1.25px;">
+        <form id="search-form">
+            <input type="text" name="query" id="search-input" autocomplete="off" autocapitalize="off" autocorrect="off" placeholder="Enter your search query..." autofocus value="{{ query or '' }}">
+            <button type="submit" class="search-submit-button">
+                <img src="/static/img/arrow-sm-right.svg" alt="">
             </button>
             <input type="submit" style="display: none;">
         </form>
@@ -55,11 +55,10 @@
         <p style="font-size: large; margin: 16px 0px;"><strong>About</strong></p>
         <p>Blog search is a search engine focused on indexing personal blog content in English.</p>
         <p>It's a personal project of mine. It currently indexes <strong>{{ posts_size or '_' }}</strong> blog posts.</p>
-        <div style="margin-top: 20px;"></div>
-
-        <div class="more-info-container">
-            <p><span id="toggle-info" style="cursor: pointer; color: #EAEEED; background-color:#52718f; padding: 3px 6px; font-weight: bold;">More Information</span></p>
-            <div id="info-content" style="display: none;">
+        
+        <div class="toggle-container">
+            <p><span id="toggle-info" class="toggle-button toggle-blue">More Information</span></p>
+            <div id="info-content" class="toggle-content">
                 <ul>
                     <li>This project is still in development. <i>Everything will be greatly expanded and improved soon.</i> <a href="https://github.com/sawatkins/blog-search">GitHub.</a></li>
                     <li>Queries work best with correctly spelled general keywords.</li>
@@ -69,18 +68,18 @@
             </div>
         </div>
 
-        <div class="feedback-container">
-            <p><span id="toggle-feedback" style="cursor: pointer; color: #EAEEED; background-color: #e67856; padding: 3px 6px; font-weight: bold;">Feedback</span></p>
-            <div id="feedback-content" style="display: none;">
+        <div class="toggle-container">
+            <p><span id="toggle-feedback" class="toggle-button toggle-orange">Feedback</span></p>
+            <div id="feedback-content" class="toggle-content">
                 <ul>
                     <a href="https://tally.so/r/mBe7We">Feedback form</a>
                 </ul>
             </div>
         </div>
 
-        <div class="api-container">
-            <p><span id="toggle-api" style="cursor: pointer; color: #EAEEED; background-color:#88b39b; padding: 3px 6px; font-weight: bold;">API</span></p>
-            <div id="api-content" style="display: none;">
+        <div class="toggle-container">
+            <p><span id="toggle-api" class="toggle-button toggle-green">API</span></p>
+            <div id="api-content" class="toggle-content">
                 <pre><code>GET /api?q={query}</code></pre>
                 <p>Returns: JSON object with an array of search results, or an empty array if no results are found.</p>
                 <pre><code>{
@@ -133,8 +132,8 @@ results = r.json()["results"]</code></pre>
             
             const searchResults = document.getElementById('search-results');
             searchResults.innerHTML = `
-                <div class="loading-container" style="text-align: center; padding: 30px 0;">
-                    <div class="loading-spinner" style="display: inline-block; width: 30px; height: 30px; border: 3px solid rgba(0,0,0,0.1); border-radius: 50%; border-top-color: #52718f; animation: spin 0.35s ease-in-out infinite;"></div>
+                <div class="loading-container">
+                    <div class="loading-spinner"></div>
                 </div>
             `;
 
@@ -160,12 +159,6 @@ results = r.json()["results"]</code></pre>
                 });
         });
     </script>
-
-    <style>
-        @keyframes spin {
-            to { transform: rotate(360deg); }
-        }
-    </style>
 </body>
 
 </html>
