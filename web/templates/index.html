@@ -14,9 +14,9 @@
     
     <link rel="stylesheet" type="text/css" href="/static/css/style.css" />
     
-    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <!-- <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Play:wght@400;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Play:wght@400;700&display=swap" rel="stylesheet"> -->
 
 </head>
 
@@ -25,20 +25,21 @@
         <div class="navbar-logo">
             <img src="/static/img/sailboat.svg" alt="">
             <p class="navbar-links">
-                <span class="navbar-title">&nbsp;Blog<i><span>Search</span></i></span> &nbsp;&nbsp;
+                <span class="navbar-title"><strong>Blog</strong><i><span><strong>Search</strong></span></i></span> &nbsp;&nbsp;
                 
-                <a href="/">Home</a> &nbsp;&nbsp;
-                <a href="/api">API</a> &nbsp;&nbsp;
-                <a href="/about">About</a> &nbsp;&nbsp;
+                <!-- <a href="/">Home</a> &nbsp;&nbsp;
+                <a href="/api">API</a> &nbsp;&nbsp; -->
+                <!-- <a href="/about">About</a> &nbsp;&nbsp; -->
             </p>
         </div>
     </div>
     <hr class="separator">
+    <br>
 
-    <div class="flexbox-center">
+    <!-- <div class="flexbox-center">
         <img src="/static/img/magnifying-glass-icon.svg" alt="" width="25px" height="25px">
         <h2 style="font-weight: 400;">Search personal blog content</h2>
-    </div>
+    </div> -->
 
     <div id="search-input-wrapper" class="flexbox-center">
         <form id="search-form">
@@ -63,18 +64,14 @@
                     <li>This project is still in development. <i>Everything will be greatly expanded and improved soon.</i> <a href="https://github.com/sawatkins/blog-search">GitHub.</a></li>
                     <li>Queries work best with correctly spelled general keywords.</li>
                     <li>It currently uses PostgreSQL's full text search for indexing and ranking.</li>
+                    <li>It is hosted on a single-node Kubernetes cluster with k3s.</li>
                     <li>The current list of blogs to index is compiled from <a href="https://github.com/outcoldman/hackernews-personal-blogs" target="_blank">this list of HN blogs</a> and from <a href="https://ooh.directory/blogs/technology/" target="_blank">ooh's tech directory</a>.</li>
                 </ul>
             </div>
         </div>
 
         <div class="toggle-container">
-            <p><span id="toggle-feedback" class="toggle-button toggle-orange">Feedback</span></p>
-            <div id="feedback-content" class="toggle-content">
-                <ul>
-                    <a href="https://tally.so/r/mBe7We">Feedback form</a>
-                </ul>
-            </div>
+            <p><a href="https://tally.so/r/mBe7We" target="_blank" class="toggle-button toggle-orange" style="text-decoration: none;">Feedback</a></p>
         </div>
 
         <div class="toggle-container">
@@ -96,7 +93,7 @@
 
                 <p>Example Usage:</p>
                 <pre><code style="white-space: pre-wrap;"># Python
-r = requests.get("https://blogsearch.io/api", params={"q": "your search query"})
+r = requests.get("https://blogsearch.io/api/search", params={"q": "your search query"})
 results = r.json()["results"]</code></pre>
             </div>
         </div>
@@ -104,7 +101,7 @@ results = r.json()["results"]</code></pre>
 
     <hr style="margin-top: 1.4rem;">
     <div class="footer">
-        <p>&copy; 2024 <span style="text-decoration: underline;">blogsearch.io</span></p>
+        <p>&copy; 2025 <span style="">blogsearch.io</span></p>
     </div>
 
     <script>
@@ -116,7 +113,6 @@ results = r.json()["results"]</code></pre>
         }
 
         setupToggle('toggle-info', 'info-content');
-        setupToggle('toggle-feedback', 'feedback-content');
         setupToggle('toggle-api', 'api-content');
 
         document.getElementById('search-form').addEventListener('submit', function (event) {

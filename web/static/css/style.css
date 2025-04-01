@@ -188,21 +188,21 @@ pre code {
   margin-bottom: 0.4rem;
 }
 
-.navbar-logo {
+/* .navbar-logo {
   display: inline-block;
   vertical-align: middle;
-}
+} */
 
 .navbar-logo img {
   display: inline;
   vertical-align: middle;
-  width: 19px;
-  height: 19px;
+  width: 25px;
+  height: 25px;
 }
 
 .navbar-title {
   display: inline;
-  vertical-align: middle;
+  /* vertical-align: middle; */
   font-size: 1.1rem;
 }
 
