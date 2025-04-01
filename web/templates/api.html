@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <title>Blog Search - API</title>
+    <meta http-equiv="Content-type" content="text/html; charset=utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="Blog Search is a search engine focused on indexing personal blog content in English" />
+    <meta name="author" content="sawatkins" />
+    <meta name="keywords" content="blogsearch, blog, search, discover" />
+    <meta name="robots" content="noindex, nofollow">
+    <link rel="icon" type="image/x-icon" href="/favicon.ico">
+    <link rel="canonical" href="https://blogsearch.io/api" />
+    
+    <link rel="stylesheet" type="text/css" href="/static/css/style.css" />
+    
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Play:wght@400;700&display=swap" rel="stylesheet">
+
+</head>
+
+<body>
+    <div id="navbar">
+        <div style="display: inline-block; vertical-align: middle;">
+            <img src="/static/img/sailboat.svg" alt="" width="19px" height="19px" style="display: inline; vertical-align: middle;">
+            <p style="display: inline; vertical-align: middle;">
+                <span style="font-size: 1.1rem">&nbsp;Blog<i><span style="font-weight: normal;">Search</span></i></span> &nbsp;&nbsp;
+                
+                <a href="/">Home</a> &nbsp;&nbsp;
+                <a href="/api">API</a> &nbsp;&nbsp;
+                <a href="/about">About</a> &nbsp;&nbsp;
+            </p>
+        </div>
+    </div>
+    <hr style="margin-bottom: 1.4rem;">
+
+    <div id="content">
+        <h2 style="font-weight: 400;">API Documentation</h2>
+        <p>Blog Search provides a simple API to search through blog content programmatically.</p>
+
+        <h3>Search Endpoint</h3>
+        <pre><code>GET /api?q={query}</code></pre>
+        <p>Returns: JSON object with an array of search results, or an empty array if no results are found.</p>
+        
+        <h3>Response Format</h3>
+        <pre><code>{
+  "results": [
+    {
+      "url": "https://example.com/blog-post",
+      "title": "Example Blog Post",
+      "date": "2023-04-15",
+      "snippet": "Post content snippet..."
+    },
+    // More results...
+  ]
+}</code></pre>
+
+        <h3>Example Usage</h3>
+        <pre><code style="white-space: pre-wrap;"># Python
+r = requests.get("https://blogsearch.io/api", params={"q": "your search query"})
+results = r.json()["results"]</code></pre>
+    </div>
+
+    <hr style="margin-top: 1.4rem;">
+    <div class="footer">
+        <p>&copy; 2024 <span style="text-decoration: underline;">blogsearch.io</span></p>
+    </div>
+</body>
+
+</html>
