@@ -374,3 +374,15 @@ pre code {
     font-size: 1.3rem;
   }
 } 
+
+.logo-link {
+    text-decoration: none;
+    color: inherit;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.logo-link h2 {
+    margin: 0;
+} 

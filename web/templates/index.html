@@ -21,25 +21,26 @@
 </head>
 
 <body>
-    <div id="navbar">
+    <!-- <div id="navbar">
         <div class="navbar-logo">
             <img src="/static/img/sailboat.svg" alt="">
             <p class="navbar-links">
                 <span class="navbar-title"><strong>Blog</strong><i><span><strong>Search</strong></span></i></span> &nbsp;&nbsp;
                 
-                <!-- <a href="/">Home</a> &nbsp;&nbsp;
-                <a href="/api">API</a> &nbsp;&nbsp; -->
-                <!-- <a href="/about">About</a> &nbsp;&nbsp; -->
+
             </p>
         </div>
-    </div>
-    <hr class="separator">
-    <br>
-
-    <!-- <div class="flexbox-center">
-        <img src="/static/img/magnifying-glass-icon.svg" alt="" width="25px" height="25px">
-        <h2 style="font-weight: 400;">Search personal blog content</h2>
     </div> -->
+    <!-- <hr class="separator">
+    <br> -->
+
+    <h2 class="flexbox-center">
+        <a href="/" class="logo-link">
+            <img src="/static/img/sailboat.svg" alt="" width="40px">
+            <h2 style="font-weight: 400;"><strong>Blog Search</strong></h2>
+        </a>
+    </h2>
+    <br>
 
     <div id="search-input-wrapper" class="flexbox-center">
         <form id="search-form">
@@ -49,7 +50,8 @@
             </button>
             <input type="submit" style="display: none;">
         </form>
-    </div><br>
+    </div>
+    <!-- <br> -->
 
 
     <div id="search-results">
@@ -77,7 +79,7 @@
         <div class="toggle-container">
             <p><span id="toggle-api" class="toggle-button toggle-green">API</span></p>
             <div id="api-content" class="toggle-content">
-                <pre><code>GET /api?q={query}</code></pre>
+                <pre><code>GET /api/search?q={query}</code></pre>
                 <p>Returns: JSON object with an array of search results, or an empty array if no results are found.</p>
                 <pre><code>{
   "results": [
