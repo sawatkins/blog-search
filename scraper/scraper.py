@@ -30,8 +30,9 @@ class Scraper:
     def init_db(self) -> None:
         try:
             cursor = self.connection.cursor()
+            # what is even the point of the feeds table???
             cursor.execute("""
-                CREATE TABLE IF NOT EXISTS feeds (
+                CREATE TABLE IF NOT EXISTS feeds ( 
                     feed_url TEXT PRIMARY KEY,
                     domain TEXT,
                     last_check_date DATE,
@@ -68,24 +69,39 @@ class Scraper:
         except Exception as e:
             print(f"Error downloading feeds file: {e}")
             return []
+        
+    def url_exists_in_db(self, url: str) -> bool:
+        try:
+            cursor = self.connection.cursor()
+            cursor.execute("SELECT EXISTS(SELECT 1 FROM pages WHERE url = %s)", (url,))
+            exists = cursor.fetchone()[0]
+            cursor.close()
+            return exists
+        except (Exception, psycopg2.Error) as error:
+            print(f"Error checking URL existence: {error}")
+            return False
     
     def parse_feed_links(self):
-        for feed in self.smallweb_feeds[5000:5005]:
+        for feed in self.smallweb_feeds[6000:6005]:
+            new_links = []
             parsed_feed = fastfeedparser.parse(feed)
             link = parsed_feed.feed.link
             print(link)
             print(len(parsed_feed.entries), "entries")
+            
+            for entry in parsed_feed.entries:
+                if hasattr(entry, 'link'):
+                    exists = self.url_exists_in_db(entry.link)
+                    if not exists:
+                        new_links.append(entry.link)
+                    print(f"URL {entry.link}: {'exists' if exists else 'new'}")
+
+            print("new links:", len(new_links))
+
+
     
     def normalize_feed_url(self, url: str):
-    # Remove trailing slashes
-    #url = url.rstrip('/')
-      
-    # You might want to add more normalization logic:
-    # - Follow redirects to get canonical URL
-    # - Convert to HTTPS if available
-    # - Remove unnecessary query parameters
-        
-    #return url
+        #url = url.rstrip('/')
         pass
 
 
