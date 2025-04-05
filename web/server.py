@@ -20,6 +20,18 @@ async def home(request: Request):
         "posts_size": search_engine.size
     })
 
+@app.get("/about", response_class=HTMLResponse)
+async def api(request: Request):
+    return templates.TemplateResponse("about.html", {
+        "request": request,
+    })
+
+@app.get("/api", response_class=HTMLResponse)
+async def about(request: Request):
+    return templates.TemplateResponse("api.html", {
+        "request": request,
+    })
+
 @app.post("/search", response_class=HTMLResponse)
 async def search(request: Request, query: str = Form(...)):
     if not query.strip():
@@ -36,8 +48,8 @@ async def search(request: Request, query: str = Form(...)):
         "time": round(end_time - start_time, 2)
     })
 
-@app.get("/api", response_class=JSONResponse)
-async def api(q: str = Query(...)):
+@app.get("/api/search", response_class=JSONResponse)
+async def api_search(q: str = Query(...)):
     #TODO: checck if q is actual text (ex. quotes will pass as valid input)
     if not q.strip():
         return JSONResponse({"results": []})
