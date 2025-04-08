@@ -16,6 +16,15 @@
     <link rel="stylesheet" href="https://unpkg.com/bamboo.css">
     
     <style>
+        /* Font face declaration for Univers */
+        @font-face {
+            font-family: 'Univers';
+            src: url('/static/fonts/univers-next-regular.woff2') format('woff2');
+            font-weight: normal;
+            font-style: normal;
+            font-display: swap;
+        }
+        
         /* Custom styles that extend Bamboo CSS */
         .logo-container {
             display: flex;
@@ -23,6 +32,23 @@
             justify-content: center;
             gap: 0.5rem;
             margin: 1rem 0;
+        }
+        
+        .logo-container a {
+            display: flex;
+            align-items: center;
+            text-decoration: none;
+            color: var(--b-txt);
+            gap: 0.5rem;
+        }
+        
+        .logo-container img {
+            display: block;
+        }
+        
+        .logo-container h1 {
+            font-weight: bold;
+            font-stretch: condensed;
         }
         
         .toggle-button {
@@ -64,24 +90,79 @@
         /* Override some Bamboo defaults */
         body {
             max-width: 50rem;
+            font-family: 'Univers', sans-serif;
         }
         
         input[type="text"] {
             width: 100%;
             max-width: 30rem;
+            border-radius: 4px;
+            padding: 0.5rem 0.75rem;
+            border: 1px solid #ddd;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+            transition: all 0.1s ease;
+            font-size: 0.95rem;
+        }
+        
+        input[type="text"]:focus {
+            outline: none;
+            border-color: #aaa;
+            box-shadow: 0 1px 4px rgba(0, 0, 0, 0.15);
+        }
+        
+        .search-wrapper {
+            position: relative;
+            display: flex;
+            justify-content: center;
+            width: 100%;
+            max-width: 30rem;
+            margin: 0 auto;
         }
         
         button#search-button {
-            background: transparent;
-            position: relative;
-            left: -2.5rem;
-            padding: 0;
-            margin: 0;
+            position: absolute;
+            right: 0;
+            top: 0;
+            bottom: 0;
+            background: #52718f;
+            border: none;
+            border-radius: 0 4px 4px 0;
+            width: 2.5rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: background-color 0.1s ease;
+        }
+        
+        button#search-button:hover {
+            background: #405c78;
         }
         
         button#search-button img {
-            width: 21px;
-            height: 21px;
+            width: 16px;
+            height: 16px;
+            filter: brightness(0) invert(1);
+        }
+        
+        article {
+            margin-bottom: 0.5rem;
+        }
+        
+        #search-results h3 {
+            margin-bottom: 0.2rem;
+            margin-top: 0.2rem;
+        }
+        
+        #search-results p {
+            margin-bottom: 0.2rem;
+        }
+        
+        /* Footer styling */
+        footer p {
+            font-size: 0.75rem;
+            color: #999;
+            margin: 0.2rem 0;
         }
     </style>
 </head>
@@ -89,14 +170,16 @@
 <body>
     <header>
         <div class="logo-container">
-            <img src="/static/img/sailboat.svg" alt="Blog Search logo" width="40">
-            <h1>Blog Search</h1>
+            <a href="/">
+                <img src="/static/img/sailboat.svg" alt="Blog Search logo" width="40">
+                <h1>Blog Search</h1>
+            </a>
         </div>
     </header>
 
     <main>
         <form id="search-form">
-            <div style="display: flex; justify-content: center; align-items: center;">
+            <div class="search-wrapper">
                 <input type="text" name="query" id="search-input" autocomplete="off" autocapitalize="off" 
                     autocorrect="off" placeholder="Enter your search query..." autofocus value="{{ query or '' }}">
                 <button type="submit" id="search-button">
@@ -106,10 +189,11 @@
         </form>
 
         <div id="search-results">
-            <h2>About</h2>
+            <br>
+            <h3>About</h3>
             <p>Blog search is a search engine focused on indexing personal blog content in English.</p>
             <p>It's a personal project of mine. It currently indexes <strong>{{ posts_size or '_' }}</strong> blog posts.</p>
-            
+            <br>
             <details>
                 <summary>More Information</summary>
                 <ul>
@@ -121,12 +205,13 @@
                 </ul>
             </details>
 
-            <p>
-                <a href="https://tally.so/r/mBe7We" target="_blank" class="toggle-button toggle-orange">Feedback</a>
-            </p>
+            <details>
+                <summary>Feedback</summary>
+                <p>Please provide your feedback on <a href="https://tally.so/r/mBe7We" target="_blank">this form</a>.</p>
+            </details>
 
             <details>
-                <summary class="toggle-button toggle-green">API</summary>
+                <summary>API</summary>
                 <pre><code>GET /api/search?q={query}</code></pre>
                 <p>Returns: JSON object with an array of search results, or an empty array if no results are found.</p>
                 <pre><code>{
@@ -149,22 +234,12 @@ results = r.json()["results"]</code></pre>
         </div>
     </main>
 
-    <hr>
+    <hr style="margin-bottom: 1rem;">
     <footer>
         <p>&copy; 2025 blogsearch.io</p>
     </footer>
 
     <script>
-        // Convert details to toggle functionality for backward compatibility
-        document.addEventListener('DOMContentLoaded', function() {
-            const summaries = document.querySelectorAll('summary');
-            summaries.forEach(summary => {
-                summary.addEventListener('click', function(e) {
-                    // The details element's open state is handled by the browser
-                });
-            });
-        });
-
         document.getElementById('search-form').addEventListener('submit', function (event) {
             event.preventDefault();
             var query = document.getElementById('search-input').value.trim();
