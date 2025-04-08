@@ -12,11 +12,9 @@
     <link rel="icon" type="image/x-icon" href="/favicon.ico">
     <link rel="canonical" href="https://blogsearch.io" />
     
-    <!-- Replace custom CSS with Bamboo CSS -->
-    <link rel="stylesheet" href="https://unpkg.com/bamboo.css">
+    <link rel="stylesheet" href="/static/css/bamboo.min.css">
     
     <style>
-        /* Font face declaration for Univers */
         @font-face {
             font-family: 'Univers';
             src: url('/static/fonts/univers-next-regular.woff2') format('woff2');
@@ -25,7 +23,6 @@
             font-display: swap;
         }
         
-        /* Custom styles that extend Bamboo CSS */
         .logo-container {
             display: flex;
             align-items: center;
@@ -87,7 +84,6 @@
             100% { transform: rotate(360deg); }
         }
         
-        /* Override some Bamboo defaults */
         body {
             max-width: 50rem;
             font-family: 'Univers', sans-serif;
@@ -157,8 +153,15 @@
         #search-results p {
             margin-bottom: 0.2rem;
         }
+
+        pre {
+            background-color: var(--b-bg-1);
+        }
+
+        pre code {
+            background: inherit;
+        }
         
-        /* Footer styling */
         footer p {
             font-size: 0.75rem;
             color: #999;
@@ -212,6 +215,7 @@
 
             <details>
                 <summary>API</summary>
+                <p>Search result endpoint:</p>
                 <pre><code>GET /api/search?q={query}</code></pre>
                 <p>Returns: JSON object with an array of search results, or an empty array if no results are found.</p>
                 <pre><code>{
