@@ -1,22 +1,22 @@
 <div id="search-results">
-    <!-- <h2>Search Results</h2> -->
-    <!-- <p style="font-size: large; margin: 16px 0px;"><strong>Search Results</strong></p> -->
+    <h2>Search Results</h2>
     {% if results %}
-        <p style="font-size: 0.9rem;">Found {{ results|length }} results. {{ time }} seconds.</p>
+        <p><small>Found {{ results|length }} results. {{ time }} seconds.</small></p>
         {% for post in results[:5] %}
-            <div class="search-result">
-                <div class="search-result-title">{{ post.title[:90] if post.title else 'untitled' }}</div>
-                <div class="search-result-url"><a href="{{ post.url|default('#') }}" target="_blank">{{ post.url|default('No URL available') }}</a></div>
-                <div class="search-result-snippet">
-                    {% if post.date %}<span style="font-size: 0.85rem; font-weight: bold;">{{ post.date }}</span> - {% endif %}
+            <article>
+                <h3>{{ post.title[:90] if post.title else 'untitled' }}</h3>
+                <p><a href="{{ post.url|default('#') }}" target="_blank">{{ post.url|default('No URL available') }}</a></p>
+                <p>
+                    {% if post.date %}<strong><small>{{ post.date }}</small></strong> - {% endif %}
                     {{ post.text[:150] + '...' if post.text else 'No text available' }}
-                </div>
-            </div>
+                </p>
+            </article>
+            {% if not loop.last %}<hr>{% endif %}
         {% endfor %}
     {% else %}
-        <div class="search-result">
-            <strong>No results found</strong>
+        <article>
+            <h3>No results found</h3>
             <p>Try using correctly spelled general keywords</p>
-        </div>
+        </article>
     {% endif %}
 </div>

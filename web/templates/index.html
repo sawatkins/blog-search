@@ -12,56 +12,106 @@
     <link rel="icon" type="image/x-icon" href="/favicon.ico">
     <link rel="canonical" href="https://blogsearch.io" />
     
-    <link rel="stylesheet" type="text/css" href="/static/css/style.css" />
+    <!-- Replace custom CSS with Bamboo CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/bamboo.css">
     
-    <!-- <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Play:wght@400;700&display=swap" rel="stylesheet"> -->
-
+    <style>
+        /* Custom styles that extend Bamboo CSS */
+        .logo-container {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+            margin: 1rem 0;
+        }
+        
+        .toggle-button {
+            display: inline-block;
+            cursor: pointer;
+            padding: 0.2rem 0.5rem;
+            margin-right: 0.5rem;
+        }
+        
+        .toggle-blue { background-color: #52718f; color: white; }
+        .toggle-orange { background-color: #e67856; color: white; }
+        .toggle-green { background-color: #88b39b; color: white; }
+        
+        .toggle-content {
+            display: none;
+            margin-top: 0.5rem;
+        }
+        
+        .loading-container {
+            text-align: center;
+            padding: 2rem 0;
+        }
+        
+        .loading-spinner {
+            display: inline-block;
+            width: 30px;
+            height: 30px;
+            border: 3px solid rgba(0,0,0,0.1);
+            border-radius: 50%;
+            border-top-color: #52718f;
+            animation: spin 0.35s ease-in-out infinite;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        /* Override some Bamboo defaults */
+        body {
+            max-width: 50rem;
+        }
+        
+        input[type="text"] {
+            width: 100%;
+            max-width: 30rem;
+        }
+        
+        button#search-button {
+            background: transparent;
+            position: relative;
+            left: -2.5rem;
+            padding: 0;
+            margin: 0;
+        }
+        
+        button#search-button img {
+            width: 21px;
+            height: 21px;
+        }
+    </style>
 </head>
 
 <body>
-    <!-- <div id="navbar">
-        <div class="navbar-logo">
-            <img src="/static/img/sailboat.svg" alt="">
-            <p class="navbar-links">
-                <span class="navbar-title"><strong>Blog</strong><i><span><strong>Search</strong></span></i></span> &nbsp;&nbsp;
-                
-
-            </p>
+    <header>
+        <div class="logo-container">
+            <img src="/static/img/sailboat.svg" alt="Blog Search logo" width="40">
+            <h1>Blog Search</h1>
         </div>
-    </div> -->
-    <!-- <hr class="separator">
-    <br> -->
+    </header>
 
-    <h2 class="flexbox-center">
-        <a href="/" class="logo-link">
-            <img src="/static/img/sailboat.svg" alt="" width="40px">
-            <h2 style="font-weight: 400;"><strong>Blog Search</strong></h2>
-        </a>
-    </h2>
-    <br>
-
-    <div id="search-input-wrapper" class="flexbox-center">
+    <main>
         <form id="search-form">
-            <input type="text" name="query" id="search-input" autocomplete="off" autocapitalize="off" autocorrect="off" placeholder="Enter your search query..." autofocus value="{{ query or '' }}">
-            <button type="submit" class="search-submit-button">
-                <img src="/static/img/arrow-sm-right.svg" alt="">
-            </button>
-            <input type="submit" style="display: none;">
+            <div style="display: flex; justify-content: center; align-items: center;">
+                <input type="text" name="query" id="search-input" autocomplete="off" autocapitalize="off" 
+                    autocorrect="off" placeholder="Enter your search query..." autofocus value="{{ query or '' }}">
+                <button type="submit" id="search-button">
+                    <img src="/static/img/arrow-sm-right.svg" alt="Search">
+                </button>
+            </div>
         </form>
-    </div>
-    <!-- <br> -->
 
-
-    <div id="search-results">
-        <p style="font-size: large; margin: 16px 0px;"><strong>About</strong></p>
-        <p>Blog search is a search engine focused on indexing personal blog content in English.</p>
-        <p>It's a personal project of mine. It currently indexes <strong>{{ posts_size or '_' }}</strong> blog posts.</p>
-        
-        <div class="toggle-container">
-            <p><span id="toggle-info" class="toggle-button toggle-blue">More Information</span></p>
-            <div id="info-content" class="toggle-content">
+        <div id="search-results">
+            <h2>About</h2>
+            <p>Blog search is a search engine focused on indexing personal blog content in English.</p>
+            <p>It's a personal project of mine. It currently indexes <strong>{{ posts_size or '_' }}</strong> blog posts.</p>
+            
+            <details>
+                <summary>More Information</summary>
                 <ul>
                     <li>This project is still in development. <i>Everything will be greatly expanded and improved soon.</i> <a href="https://github.com/sawatkins/blog-search">GitHub.</a></li>
                     <li>Queries work best with correctly spelled general keywords.</li>
@@ -69,16 +119,14 @@
                     <li>It is hosted on a single-node Kubernetes cluster with k3s.</li>
                     <li>The current list of blogs to index is compiled from <a href="https://github.com/outcoldman/hackernews-personal-blogs" target="_blank">this list of HN blogs</a> and from <a href="https://ooh.directory/blogs/technology/" target="_blank">ooh's tech directory</a>.</li>
                 </ul>
-            </div>
-        </div>
+            </details>
 
-        <div class="toggle-container">
-            <p><a href="https://tally.so/r/mBe7We" target="_blank" class="toggle-button toggle-orange" style="text-decoration: none;">Feedback</a></p>
-        </div>
+            <p>
+                <a href="https://tally.so/r/mBe7We" target="_blank" class="toggle-button toggle-orange">Feedback</a>
+            </p>
 
-        <div class="toggle-container">
-            <p><span id="toggle-api" class="toggle-button toggle-green">API</span></p>
-            <div id="api-content" class="toggle-content">
+            <details>
+                <summary class="toggle-button toggle-green">API</summary>
                 <pre><code>GET /api/search?q={query}</code></pre>
                 <p>Returns: JSON object with an array of search results, or an empty array if no results are found.</p>
                 <pre><code>{
@@ -97,25 +145,25 @@
                 <pre><code style="white-space: pre-wrap;"># Python
 r = requests.get("https://blogsearch.io/api/search", params={"q": "your search query"})
 results = r.json()["results"]</code></pre>
-            </div>
+            </details>
         </div>
-    </div>
+    </main>
 
-    <hr style="margin-top: 1.4rem;">
-    <div class="footer">
-        <p>&copy; 2025 <span style="">blogsearch.io</span></p>
-    </div>
+    <hr>
+    <footer>
+        <p>&copy; 2025 blogsearch.io</p>
+    </footer>
 
     <script>
-        function setupToggle(toggleId, contentId) {
-            document.getElementById(toggleId).addEventListener('click', function () {
-                var content = document.getElementById(contentId);
-                content.style.display = content.style.display === 'none' ? 'block' : 'none';
+        // Convert details to toggle functionality for backward compatibility
+        document.addEventListener('DOMContentLoaded', function() {
+            const summaries = document.querySelectorAll('summary');
+            summaries.forEach(summary => {
+                summary.addEventListener('click', function(e) {
+                    // The details element's open state is handled by the browser
+                });
             });
-        }
-
-        setupToggle('toggle-info', 'info-content');
-        setupToggle('toggle-api', 'api-content');
+        });
 
         document.getElementById('search-form').addEventListener('submit', function (event) {
             event.preventDefault();
