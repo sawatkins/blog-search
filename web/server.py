@@ -73,7 +73,7 @@ async def api_search(q: str = Query(...)):
 async def robots():
     return """
 User-agent: *
-Disallow: /
+Disallow: 
 """
 
 @app.get("/favicon.ico")
