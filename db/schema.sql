@@ -14,6 +14,14 @@ CREATE TABLE IF NOT EXISTS domains (
     next_allowed_scrape INTEGER
 );
 
+CREATE TABLE IF NOT EXISTS query_logs (
+    id SERIAL PRIMARY KEY,
+    query TEXT,
+    ip_address TEXT,
+    user_agent TEXT,
+    timestamp TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
 -- Index for full-text search
 -- CREATE INDEX IF NOT EXISTS pages_tsv_idx ON pages USING gin(page_tsv);
 
