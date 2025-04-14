@@ -1,5 +1,5 @@
 import time
-from fastapi import FastAPI, Request, Form, Query, HTTPException 
+from fastapi import FastAPI, Request, Form, Query, HTTPException, BackgroundTasks
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates 
 from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse, JSONResponse  
@@ -33,9 +33,16 @@ async def about(request: Request):
     })
 
 @app.post("/search", response_class=HTMLResponse)
-async def search(request: Request, query: str = Form(...)):
+async def search(request: Request, background_tasks: BackgroundTasks, query: str = Form(...)):
     if not query.strip():
         return PlainTextResponse("Please enter a search query.")
+    
+    background_tasks.add_task(
+        search_engine.log_query,
+        query=query,
+        ip_address=request.headers.get("X-Forwarded-For", request.client.host),
+        user_agent=request.headers.get("user-agent", "")
+    )
     
     start_time = time.time()
     results = search_engine.search(query)

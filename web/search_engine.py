@@ -6,7 +6,7 @@ from psycopg2 import Error
 from psycopg2 import pool
 
 class SearchEngine:
-    def __init__(self, db_name='pages.db'):
+    def __init__(self):
         load_dotenv()
         self.connection_pool = None
         self.init_pool()
@@ -17,7 +17,7 @@ class SearchEngine:
         try:
             self.connection_pool = pool.ThreadedConnectionPool(
                 minconn=1,  
-                maxconn=10,  
+                maxconn=3, 
                 host=os.getenv('PGHOST'),
                 database=os.getenv('PGDATABASE'),
                 user=os.getenv('PGUSER'),
@@ -75,7 +75,7 @@ class SearchEngine:
             return ''
         return re.sub(r'\s+', ' ', text.replace('\n', ' '), flags=re.MULTILINE).strip().lower()
 
-    def search(self, query):
+    def search(self, query) -> list[dict]:
         conn = self.get_connection()
         try:
             query_words = self.clean_text(query)
@@ -103,6 +103,20 @@ class SearchEngine:
                     }
                     for row in results
                 ]
+        finally:
+            self.release_connection(conn)
+
+    def log_query(self, query: str, ip_address: str, user_agent: str) -> None:
+        conn = self.get_connection()
+        try:
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    "INSERT INTO query_logs (query, ip_address, user_agent) VALUES (%s, %s, %s)",
+                    (query, ip_address, user_agent)
+                )
+                conn.commit()
+        except Exception as e:
+            print(f"Error logging query: {e}")
         finally:
             self.release_connection(conn)
 
