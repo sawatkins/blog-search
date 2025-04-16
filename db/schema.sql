@@ -4,6 +4,7 @@ CREATE TABLE IF NOT EXISTS pages (
     title TEXT,
     url TEXT UNIQUE,
     feed_url TEXT REFERENCES feeds(feed_url),
+    domain TEXT REFERENCES domains(domain),
     fingerprint TEXT UNIQUE,
     date DATE,
     text TEXT,
@@ -14,7 +15,6 @@ CREATE TABLE IF NOT EXISTS pages (
 -- Table for tracking RSS feeds
 CREATE TABLE IF NOT EXISTS feeds (
     feed_url TEXT PRIMARY KEY,
-    domain TEXT,
     last_check_date DATE,
     is_active BOOLEAN DEFAULT true,
     date_added TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
@@ -23,6 +23,7 @@ CREATE TABLE IF NOT EXISTS feeds (
 -- Table for domain-based rate limiting
 CREATE TABLE IF NOT EXISTS domains (
     domain TEXT PRIMARY KEY,
+    scrape_error_count INTEGER DEFAULT 0,
     next_allowed_scrape TIMESTAMP WITH TIME ZONE
 );
 

@@ -1,62 +1,96 @@
 import sys
 import os
 from dotenv import load_dotenv
-import psycopg2
-from sqs_queue import SQSQueue
+from psycopg2 import Error
+from psycopg2 import pool
 import fastfeedparser
 import requests
+from sqs_queue import SQSQueue
+
 
 class Scraper:
-    def __init__(self, db_name='') -> None:
-        self.connection: psycopg2.extensions.connection
+    def __init__(self) -> None:
+        load_dotenv()
+        self.connection_pool = None
+        self.init_pool()
+        self.init_db()        
         self.sqs_queue = SQSQueue()
-        self.connect_db()
-        self.init_db()
-        self.smallweb_feeds = self.get_smallweb_feeds()
 
-    def connect_db(self) -> None:
+    def init_pool(self):
         try:
-            self.connection = psycopg2.connect(
+            self.connection_pool = pool.ThreadedConnectionPool(
+                minconn=1,  
+                maxconn=3, 
                 host=os.getenv('PGHOST'),
                 database=os.getenv('PGDATABASE'),
                 user=os.getenv('PGUSER'),
                 password=os.getenv('PGPASSWORD'),
                 port="5432"
             )
-        except (Exception, psycopg2.Error) as error:
-            print("Error while connecting to PostgreSQL:", error)
+        except (Exception, Error) as error:
+            print("Error while creating connection pool:", error)
             sys.exit(1)
 
-    def init_db(self) -> None:
-        try:
-            cursor = self.connection.cursor()
-            # what is even the point of the feeds table???
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS feeds ( 
-                    feed_url TEXT PRIMARY KEY,
-                    domain TEXT,
-                    last_check_date DATE,
-                    is_active BOOLEAN DEFAULT true,
-                    date_added TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-                );
+    def get_connection(self):
+        if self.connection_pool is None:
+            self.init_pool()
+        return self.connection_pool.getconn()
 
-                CREATE TABLE IF NOT EXISTS pages (
-                    id SERIAL PRIMARY KEY,
-                    title TEXT,
-                    url TEXT,
-                    feed_url TEXT REFERENCES feeds(feed_url),
-                    fingerprint TEXT UNIQUE,
-                    date DATE,
-                    text TEXT,
-                    scraped_on_date TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-                );
-            """)
-            self.connection.commit()
-            cursor.close()
-        except (Exception, psycopg2.Error) as error:
+    def release_connection(self, connection):
+        if self.connection_pool is not None:
+            self.connection_pool.putconn(connection)
+
+    def close_pool(self):
+        if self.connection_pool is not None:
+            self.connection_pool.closeall()
+            self.connection_pool = None
+
+    def __del__(self):
+        self.close_pool()
+    
+    def init_db(self):
+        conn = self.get_connection()
+        try:
+            filepath = os.path.join(os.path.dirname(__file__), '..', 'db', 'schema.sql')
+            with open(filepath, 'r') as f:
+                schema = f.read()
+                with conn.cursor() as cur:
+                    cur.execute(schema)
+                conn.commit()
+        except (Exception, Error) as error:
             print("Error while initializing database:", error)
             sys.exit(1)
+        finally:
+            self.release_connection(conn)
     
+    def update_feeds_list(self):
+        smallweb_feeds = self.get_smallweb_feeds()
+
+        conn = self.get_connection()
+        try:
+            cursor = conn.cursor()
+            cursor.execute("SELECT feed_url FROM feeds")
+            existing_feeds = {row[0] for row in cursor.fetchall()}        
+            new_feeds = [feed for feed in smallweb_feeds if feed not in existing_feeds]
+
+            print(f"found {len(existing_feeds)} existing feeds")
+            print(f"found {len(new_feeds)} new feeds")
+            
+            if new_feeds:
+                insert_query = "INSERT INTO feeds (feed_url) VALUES (%s) ON CONFLICT DO NOTHING"
+                cursor.executemany(insert_query, [(feed,) for feed in new_feeds])
+                conn.commit()
+                print(f"Added {len(new_feeds)} new feeds to the database")
+            else:
+                print("No new feeds to add")
+            
+            cursor.close()
+        except Exception as e:
+            conn.rollback()
+            print(f"Error updating feeds list: {e}")
+        finally:
+            self.release_connection(conn)
+
     def get_smallweb_feeds(self) -> list[str]:
         feeds_file_url = 'https://raw.githubusercontent.com/kagisearch/smallweb/refs/heads/main/smallweb.txt'
         try:
@@ -65,21 +99,24 @@ class Scraper:
             
             feeds = [line.strip().rstrip('/') for line in response.text.splitlines() if line.strip()]
             return list(set(feeds))
-            
+        
         except Exception as e:
             print(f"Error downloading feeds file: {e}")
             return []
         
     def url_exists_in_db(self, url: str) -> bool:
+        conn = self.get_connection()
         try:
-            cursor = self.connection.cursor()
+            cursor = conn.cursor()
             cursor.execute("SELECT EXISTS(SELECT 1 FROM pages WHERE url = %s)", (url,))
             exists = cursor.fetchone()[0]
             cursor.close()
             return exists
-        except (Exception, psycopg2.Error) as error:
+        except (Exception, Error) as error:
             print(f"Error checking URL existence: {error}")
             return False
+        finally:
+            self.release_connection(conn)
     
     def parse_feed_links(self):
         for feed in self.smallweb_feeds[6000:6005]:
@@ -106,12 +143,16 @@ class Scraper:
 
 
 if __name__ == "__main__":
-    print("starting scraper...")
-    load_dotenv()
     scraper = Scraper()
-    print("connected to db and sqs")
+    
+    if len(sys.argv) > 1:
+        command = sys.argv[1]
+        if command == "update_feeds":
+            scraper.update_feeds_list()
+        else:
+            print(f"unknown command: {command}")
+            print("available commands: update_feeds")
+    else:
+        print("available commands: update_feeds")
 
-    #scraper.get_new_smallweb_urls()
-    #feed = scraper.get_smallweb_feeds()
-    print(len(scraper.smallweb_feeds))
-    scraper.parse_feed_links()
+
