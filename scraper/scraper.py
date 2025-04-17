@@ -11,7 +11,7 @@ from sqs_queue import SQSQueue
 class Scraper:
     def __init__(self) -> None:
         load_dotenv()
-        self.connection_pool = None
+        self.connection_pool: pool.ThreadedConnectionPool 
         self.init_pool()
         self.init_db()        
         self.sqs_queue = SQSQueue()
@@ -43,7 +43,6 @@ class Scraper:
     def close_pool(self):
         if self.connection_pool is not None:
             self.connection_pool.closeall()
-            self.connection_pool = None
 
     def __del__(self):
         self.close_pool()
@@ -121,7 +120,7 @@ class Scraper:
             self.release_connection(conn)
     
     def new_scrape(self):
-        self.parse_feed_links()
+        self.enqueue_new_feed_entries()
     
     def url_exists_in_db(self, url: str) -> bool:
         conn = self.get_connection()
@@ -137,12 +136,12 @@ class Scraper:
         finally:
             self.release_connection(conn)
     
-    def parse_feed_links(self):
+    def enqueue_new_feed_entries(self):
         feeds = self.get_all_feeds(only_due_for_update=False)
-        # for testing
+        # subset of feeds for testing
         feeds = feeds[6000:6005]
         for feed in feeds:
-            new_links = []
+            new_urls = []
             parsed_feed = fastfeedparser.parse(feed)
             link = parsed_feed.feed.link
             print(link)
@@ -154,10 +153,14 @@ class Scraper:
                     # TODO: remove known urls that are not blog posts
                     exists = self.url_exists_in_db(entry_link)
                     if not exists:
-                        new_links.append(entry_link)
+                        new_urls.append(entry_link)
                     print(f"URL {entry_link}: {'exists' if exists else 'new'}")
 
-            print("new links:", len(new_links))
+            print("new urls:", len(new_urls))
+            if new_urls:
+                for url in new_urls:
+                    self.sqs_queue.send_message(url)
+                print(f"sent {len(new_urls)} new urls to the queue")        
 
     def tmp(self):
         feeds = self.get_all_feeds(only_due_for_update=False)
