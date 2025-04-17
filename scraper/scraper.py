@@ -103,7 +103,26 @@ class Scraper:
         except Exception as e:
             print(f"Error downloading feeds file: {e}")
             return []
-        
+    
+    def get_all_feeds(self, only_due_for_update: bool = False):
+        conn = self.get_connection()
+        try:
+            cursor = conn.cursor()
+            if only_due_for_update:
+                cursor.execute("SELECT feed_url FROM feeds WHERE last_check_date < CURRENT_DATE - INTERVAL '1 day'")
+            else:
+                cursor.execute("SELECT feed_url FROM feeds")
+            feeds = [row[0] for row in cursor.fetchall()]
+            return feeds
+        except (Exception, Error) as error:
+            print(f"Error getting all feeds: {error}")
+            return []
+        finally:
+            self.release_connection(conn)
+    
+    def new_scrape(self):
+        self.parse_feed_links()
+    
     def url_exists_in_db(self, url: str) -> bool:
         conn = self.get_connection()
         try:
@@ -114,12 +133,15 @@ class Scraper:
             return exists
         except (Exception, Error) as error:
             print(f"Error checking URL existence: {error}")
-            return False
+            return True
         finally:
             self.release_connection(conn)
     
     def parse_feed_links(self):
-        for feed in self.smallweb_feeds[6000:6005]:
+        feeds = self.get_all_feeds(only_due_for_update=False)
+        # for testing
+        feeds = feeds[6000:6005]
+        for feed in feeds:
             new_links = []
             parsed_feed = fastfeedparser.parse(feed)
             link = parsed_feed.feed.link
@@ -128,18 +150,19 @@ class Scraper:
             
             for entry in parsed_feed.entries:
                 if hasattr(entry, 'link'):
-                    exists = self.url_exists_in_db(entry.link)
+                    entry_link = entry.link.strip().rstrip('/')
+                    # TODO: remove known urls that are not blog posts
+                    exists = self.url_exists_in_db(entry_link)
                     if not exists:
-                        new_links.append(entry.link)
-                    print(f"URL {entry.link}: {'exists' if exists else 'new'}")
+                        new_links.append(entry_link)
+                    print(f"URL {entry_link}: {'exists' if exists else 'new'}")
 
             print("new links:", len(new_links))
 
+    def tmp(self):
+        feeds = self.get_all_feeds(only_due_for_update=False)
+        print(len(feeds))
 
-    
-    def normalize_feed_url(self, url: str):
-        #url = url.rstrip('/')
-        pass
 
 
 if __name__ == "__main__":
@@ -149,10 +172,14 @@ if __name__ == "__main__":
         command = sys.argv[1]
         if command == "update_feeds":
             scraper.update_feeds_list()
+        elif command == "new_scrape":
+            scraper.new_scrape()
+        elif command == "tmp":
+            scraper.tmp()
         else:
             print(f"unknown command: {command}")
-            print("available commands: update_feeds")
+            print("available commands: update_feeds, new_scrape, tmp")
     else:
-        print("available commands: update_feeds")
+        print("available commands: update_feeds, new_scrape, tmp")
 
 

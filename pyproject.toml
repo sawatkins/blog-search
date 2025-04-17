@@ -1,7 +1,7 @@
 [project]
 name = "blog-search"
 version = "0.1.0"
-description = "Add your description here"
+description = "Search engine indexing personal blog content"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
