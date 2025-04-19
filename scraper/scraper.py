@@ -1,12 +1,15 @@
+from datetime import datetime
+import json
 import sys
 import os
+from time import sleep
 from dotenv import load_dotenv
 from psycopg2 import Error
 from psycopg2 import pool
 import fastfeedparser
 import requests
 from sqs_queue import SQSQueue
-
+import trafilatura
 
 class Scraper:
     def __init__(self):
@@ -20,7 +23,7 @@ class Scraper:
         try:
             self.connection_pool = pool.ThreadedConnectionPool(
                 minconn=1,  
-                maxconn=3, 
+                maxconn=8, 
                 host=os.getenv('PGHOST'),
                 database=os.getenv('PGDATABASE'),
                 user=os.getenv('PGUSER'),
@@ -131,8 +134,9 @@ class Scraper:
             self.release_connection(conn)
 
     def scrape(self):
-        #self.enqueue_new_feed_entries()
-        self.process_queue()
+        self.enqueue_new_feed_entries()
+        while True:
+            self.process_queue_message()
     
     def url_exists_in_db(self, url: str) -> bool:
         conn = self.get_connection()
@@ -151,47 +155,131 @@ class Scraper:
     def enqueue_new_feed_entries(self):
         # TODO: make this multi-threaded
         # TODO: add logic to handle errors
-        # TODO: update feeds table with last check date
-        feeds = self.get_all_feeds(only_due_for_update=False)
+        feeds = self.get_all_feeds(only_due_for_update=False) #True in prod
         feeds = feeds[6000:6005] # subset of feeds for testing
         for feed in feeds:
-            new_urls = []
-            parsed_feed = fastfeedparser.parse(feed)
-            link = parsed_feed.feed.link
-            print(link)
-            print(len(parsed_feed.entries), "entries")
-            
-            for entry in parsed_feed.entries:
-                if hasattr(entry, 'link'):
-                    entry_link = entry.link.strip().rstrip('/')
-                    # TODO: remove known url patterns that are not blog posts
-                    exists = self.url_exists_in_db(entry_link)
-                    if not exists:
-                        new_urls.append(entry_link)
-                    print(f"URL {entry_link}: {'exists' if exists else 'new'}")
+            try:
+                new_urls = []
+                parsed_feed = fastfeedparser.parse(feed)
+                link = parsed_feed.feed.link
+                print(link)
+                print(len(parsed_feed.entries), "entries")
+            except Exception as e:
+                print(f"Error parsing feed {feed}: {e}")
+                continue
+
+            try:
+                for entry in parsed_feed.entries:
+                    if hasattr(entry, 'link'):
+                        entry_link = entry.link.strip().rstrip('/')
+                        # TODO: remove known url patterns that are not blog posts
+                        exists = self.url_exists_in_db(entry_link)
+                        if not exists:
+                            new_urls.append(entry_link)
+                        print(f"URL {entry_link}: {'exists' if exists else 'new'}")
+            except Exception as e:
+                print(f"Error processing feed {feed}: {e}")
+                continue
 
             print("new urls:", len(new_urls))
             if new_urls:
                 self.sqs_queue.send_message(new_urls)
                 print(f"sent {len(new_urls)} new urls to the queue") 
-            
-            self.mark_feed_as_checked(feed)
-    
-    def process_queue(self):
-        # TODO: later, make this multi-threaded
+                self.mark_feed_as_checked(feed)
+
+    def process_queue_message(self):
         message = self.sqs_queue.receive_message()
-        if message:
-            self.process_message(message)
-    
-    def process_message(self, message: dict):
-        # TODO: Add logic to download and process the page
-        # For now, just acknowledge processing is complete
-        url = message[0]['Body']
-        print(f"Processing URL: {url}")
+        if not message:
+            print("no message received")
+            return
+
+        try:
+            receipt_handle = message['ReceiptHandle']
+            body = json.loads(message['Body'])
+            urls = body['urls']
+        except Exception as e:
+            print(f"Error parsing message: {e}")
+            return
+
+        if len(urls) > 3:
+            self.sqs_queue.change_message_visibility(receipt_handle, len(urls) * 3 * 5)
+            print(f"changed message visibility to {len(urls) * 3 * 5} seconds")
+        
+        for url in urls:
+            if self.is_url_in_db(url):
+                print(f"url already in db: {url}")
+                continue
+
+            try:
+                print(f"scraping url: {url}")
+                self.scrape_url(url)
+            except Exception as e:
+                print(f"Error scraping url: {e}")
+                #TODO: keep track of errors and stop if too many errors
             
-        receipt_handle = message[0]['ReceiptHandle']
+            sleep(5)
+
         self.sqs_queue.delete_message(receipt_handle)
-        print(f"Processed and deleted message for URL: {url}")
+        print(f"deleted message")
+        sleep(10)
+    
+    def scrape_url(self, url: str):
+        downloaded_content = trafilatura.fetch_url(url)
+        if not downloaded_content:
+            print(f"failed to download content for {url}")
+            return
+        
+        if not trafilatura.readability_lxml.is_probably_readerable(downloaded_content):
+            print(f"downloaded content for {url} is not readable")
+            return
+        
+        extracted = trafilatura.extract(downloaded_content, output_format='json', with_metadata=True)
+        if not extracted:
+            print(f"failed to extract text for {url}")
+            return
+        
+        extracted_dict = json.loads(extracted)
+        if len(extracted_dict['raw_text']) < 100:
+            print(f"extracted text for {url} is too short")
+            return
+        
+        page = {
+            'title': extracted_dict['title'],
+            'url': url,
+            'fingerprint': extracted_dict['fingerprint'],
+            'date': extracted_dict['date'],
+            'text': extracted_dict['raw_text']
+        }
+
+        self.save_page(page)
+        
+        #print(page)
+    
+    def save_page(self, page: dict):
+        conn = self.get_connection()
+        try:
+            cursor = conn.cursor()
+            cursor.execute("INSERT INTO pages (title, url, fingerprint, date, text) VALUES (%s, %s, %s, %s, %s)", (page['title'], page['url'], page['fingerprint'], page['date'], page['text']))
+            conn.commit()
+        except (Exception, Error) as error:
+            print(f"Error saving page: {error}")
+        finally:
+            self.release_connection(conn)
+        
+    def is_url_in_db(self, url: str) -> bool:
+        conn = self.get_connection()
+        try:
+            cursor = conn.cursor()
+            cursor.execute("SELECT EXISTS(SELECT 1 FROM pages WHERE url = %s)", (url,))
+            exists = cursor.fetchone()[0]
+            cursor.close()
+            return exists
+        except (Exception, Error) as error:
+            print(f"Error checking URL existence: {error}")
+            return True
+        finally:
+            self.release_connection(conn)
+    
 
     def tmp(self):
         feeds = self.get_all_feeds(only_due_for_update=False)

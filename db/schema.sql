@@ -3,8 +3,6 @@ CREATE TABLE IF NOT EXISTS pages (
     id SERIAL PRIMARY KEY,
     title TEXT,
     url TEXT UNIQUE,
-    feed_url TEXT REFERENCES feeds(feed_url),
-    domain TEXT REFERENCES domains(domain),
     fingerprint TEXT UNIQUE,
     date DATE,
     text TEXT,

@@ -38,7 +38,7 @@ class SQSQueue:
             print(f"Error sending message to queue: {str(e)}")
             return None
     
-    def receive_message(self, wait_time_seconds=10, visibility_timeout=10):
+    def receive_message(self, wait_time_seconds=10, visibility_timeout=60):
         try:
             response = self.sqs_client.receive_message(
                 QueueUrl=self.queue_url,
@@ -48,20 +48,12 @@ class SQSQueue:
             )
             
             if 'Messages' in response:
-                message = response['Messages'][0]
-                urls = []
-                try:
-                    body_data = json.loads(message['Body'])
-                    urls = body_data.get('urls', [])
-                except json.JSONDecodeError:
-                    print(f"Error parsing message body: {message['Body']}")
-                    return []
-                return urls
-            return []
+                return response['Messages'][0]
+            return None
             
         except Exception as e:
             print(f"Error receiving message from queue: {str(e)}")
-            return []
+            return None
     
     def delete_message(self, receipt_handle):
         try:
@@ -98,10 +90,10 @@ class SQSQueue:
 if __name__ == "__main__":
     load_dotenv()
     q = SQSQueue()
-    
-    q.send_message("https://www.google.com")
-    message = q.receive_message()
-    if message:
-        print("received:", message[0]['Body'])
-        q.delete_message(message[0]['ReceiptHandle'])
-        print("message deleted after processing")
+    q.purge_queue()
+    # q.send_message(["https://www.google.com"])
+    # message = q.receive_message()
+    # if message:
+    #     print("received:", message)
+    #     q.delete_message(message['ReceiptHandle'])
+    #     print("message deleted after processing")
