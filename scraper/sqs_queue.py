@@ -1,6 +1,7 @@
 from time import sleep
 import boto3
 import os
+import json
 from dotenv import load_dotenv
 
 class SQSQueue:
@@ -21,27 +22,41 @@ class SQSQueue:
             print(f"Error initializing SQS queue: {str(e)}")
             raise
     
-    def send_message(self, url):
+    def send_message(self, urls: list[str]):
         try:
+            if not urls or len(urls) < 1:
+                raise ValueError("At least one URL must be provided")
+                
+            message_body = json.dumps({"urls": urls})
+            
             response = self.sqs_client.send_message(
                 QueueUrl=self.queue_url,
-                MessageBody=url
+                MessageBody=message_body
             )
             return response
         except Exception as e:
             print(f"Error sending message to queue: {str(e)}")
             return None
     
-    def receive_message(self, max_messages=1, wait_time_seconds=10):
+    def receive_message(self, wait_time_seconds=10, visibility_timeout=10):
         try:
             response = self.sqs_client.receive_message(
                 QueueUrl=self.queue_url,
-                MaxNumberOfMessages=max_messages,
-                WaitTimeSeconds=wait_time_seconds
+                MaxNumberOfMessages=1,
+                WaitTimeSeconds=wait_time_seconds,
+                VisibilityTimeout=visibility_timeout
             )
             
             if 'Messages' in response:
-                return response['Messages']
+                message = response['Messages'][0]
+                urls = []
+                try:
+                    body_data = json.loads(message['Body'])
+                    urls = body_data.get('urls', [])
+                except json.JSONDecodeError:
+                    print(f"Error parsing message body: {message['Body']}")
+                    return []
+                return urls
             return []
             
         except Exception as e:
@@ -59,7 +74,7 @@ class SQSQueue:
             print(f"Error deleting message from queue: {str(e)}")
             return False
     
-    def change_message_visibility(self, receipt_handle, seconds=10):
+    def change_message_visibility(self, receipt_handle, seconds):
         try:
             self.sqs_client.change_message_visibility(
                 QueueUrl=self.queue_url,
