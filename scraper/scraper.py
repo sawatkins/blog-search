@@ -9,7 +9,7 @@ from sqs_queue import SQSQueue
 
 
 class Scraper:
-    def __init__(self) -> None:
+    def __init__(self):
         load_dotenv()
         self.connection_pool: pool.ThreadedConnectionPool 
         self.init_pool()
@@ -119,8 +119,20 @@ class Scraper:
         finally:
             self.release_connection(conn)
     
-    def new_scrape(self):
-        self.enqueue_new_feed_entries()
+    def mark_feed_as_checked(self, feed_url: str):
+        conn = self.get_connection()
+        try:
+            cursor = conn.cursor()
+            cursor.execute("UPDATE feeds SET last_check_date = CURRENT_DATE WHERE feed_url = %s", (feed_url,))
+            conn.commit()
+        except (Exception, Error) as error:
+            print(f"Error marking feed as checked: {error}")
+        finally:
+            self.release_connection(conn)
+
+    def scrape(self):
+        #self.enqueue_new_feed_entries()
+        self.process_queue()
     
     def url_exists_in_db(self, url: str) -> bool:
         conn = self.get_connection()
@@ -137,9 +149,11 @@ class Scraper:
             self.release_connection(conn)
     
     def enqueue_new_feed_entries(self):
+        # TODO: make this multi-threaded
+        # TODO: add logic to handle errors
+        # TODO: update feeds table with last check date
         feeds = self.get_all_feeds(only_due_for_update=False)
-        # subset of feeds for testing
-        feeds = feeds[6000:6005]
+        feeds = feeds[6000:6005] # subset of feeds for testing
         for feed in feeds:
             new_urls = []
             parsed_feed = fastfeedparser.parse(feed)
@@ -150,7 +164,7 @@ class Scraper:
             for entry in parsed_feed.entries:
                 if hasattr(entry, 'link'):
                     entry_link = entry.link.strip().rstrip('/')
-                    # TODO: remove known urls that are not blog posts
+                    # TODO: remove known url patterns that are not blog posts
                     exists = self.url_exists_in_db(entry_link)
                     if not exists:
                         new_urls.append(entry_link)
@@ -158,9 +172,26 @@ class Scraper:
 
             print("new urls:", len(new_urls))
             if new_urls:
-                for url in new_urls:
-                    self.sqs_queue.send_message(url)
-                print(f"sent {len(new_urls)} new urls to the queue")        
+                self.sqs_queue.send_message(new_urls)
+                print(f"sent {len(new_urls)} new urls to the queue") 
+            
+            self.mark_feed_as_checked(feed)
+    
+    def process_queue(self):
+        # TODO: later, make this multi-threaded
+        message = self.sqs_queue.receive_message()
+        if message:
+            self.process_message(message)
+    
+    def process_message(self, message: dict):
+        # TODO: Add logic to download and process the page
+        # For now, just acknowledge processing is complete
+        url = message[0]['Body']
+        print(f"Processing URL: {url}")
+            
+        receipt_handle = message[0]['ReceiptHandle']
+        self.sqs_queue.delete_message(receipt_handle)
+        print(f"Processed and deleted message for URL: {url}")
 
     def tmp(self):
         feeds = self.get_all_feeds(only_due_for_update=False)
@@ -175,14 +206,14 @@ if __name__ == "__main__":
         command = sys.argv[1]
         if command == "update_feeds":
             scraper.update_feeds_list()
-        elif command == "new_scrape":
-            scraper.new_scrape()
+        elif command == "scrape":
+            scraper.scrape()
         elif command == "tmp":
             scraper.tmp()
         else:
             print(f"unknown command: {command}")
-            print("available commands: update_feeds, new_scrape, tmp")
+            print("available commands: update_feeds, scrape, tmp")
     else:
-        print("available commands: update_feeds, new_scrape, tmp")
+        print("available commands: update_feeds, scrape, tmp")
 
 
