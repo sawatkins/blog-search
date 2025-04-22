@@ -13,6 +13,7 @@ import trafilatura
 import re
 from urllib.robotparser import RobotFileParser
 from urllib.parse import urlparse
+from concurrent.futures import ThreadPoolExecutor
 
 class Scraper:
     def __init__(self):
@@ -27,7 +28,7 @@ class Scraper:
         try:
             self.connection_pool = pool.ThreadedConnectionPool(
                 minconn=1,  
-                maxconn=8, 
+                maxconn=10, 
                 host=os.getenv('PGHOST'),
                 database=os.getenv('PGDATABASE'),
                 user=os.getenv('PGUSER'),
@@ -138,7 +139,7 @@ class Scraper:
             self.release_connection(conn)
 
     def scrape(self):
-        self.enqueue_new_feed_entries()
+        #self.enqueue_new_feed_entries()
         while True:
             self.process_queue_message()
     
@@ -176,43 +177,53 @@ class Scraper:
         safety_margin = 1.2
         return math.ceil(safety_margin * (num_urls * (timout + scrape_delay + processing_delay)))
     
+    def process_feed(self, feed):
+        try:
+            new_urls = []
+            parsed_feed = fastfeedparser.parse(feed)
+            link = parsed_feed.feed.link
+            print(link)
+            print(len(parsed_feed.entries), "entries")
+        except Exception as e:
+            print(f"Error parsing feed {feed}: {e}")
+            return
+
+        try:
+            for entry in parsed_feed.entries:
+                if hasattr(entry, 'link'):
+                    entry_link = entry.link.strip().rstrip('/')
+                    if not self.is_blog_post_url(entry_link):
+                        print(f"Skipping non-blog URL: {entry_link}")
+                        continue
+                    exists = self.url_exists_in_db(entry_link)
+                    if not exists:
+                        new_urls.append(entry_link)
+                    print(f"URL {entry_link}: {'exists' if exists else 'new'}")
+        except Exception as e:
+            print(f"Error processing feed {feed}: {e}")
+            return
+
+        print("new urls:", len(new_urls))
+        if new_urls:
+            self.sqs_queue.send_message(new_urls)
+            print(f"sent {len(new_urls)} new urls to the queue") 
+            self.mark_feed_as_checked(feed)
+    
     def enqueue_new_feed_entries(self):
-        # TODO: make this multi-threaded
         feeds = self.get_all_feeds(only_due_for_update=False) #True in prod
         feeds = feeds[6000:6005] # subset of feeds for testing
-        for feed in feeds:
-            try:
-                new_urls = []
-                parsed_feed = fastfeedparser.parse(feed)
-                link = parsed_feed.feed.link
-                print(link)
-                print(len(parsed_feed.entries), "entries")
-            except Exception as e:
-                print(f"Error parsing feed {feed}: {e}")
-                continue
-
-            try:
-                for entry in parsed_feed.entries:
-                    if hasattr(entry, 'link'):
-                        entry_link = entry.link.strip().rstrip('/')
-                        if not self.is_blog_post_url(entry_link):
-                            print(f"Skipping non-blog URL: {entry_link}")
-                            continue
-                        exists = self.url_exists_in_db(entry_link)
-                        if not exists:
-                            new_urls.append(entry_link)
-                        print(f"URL {entry_link}: {'exists' if exists else 'new'}")
-            except Exception as e:
-                print(f"Error processing feed {feed}: {e}")
-                continue
-
-            print("new urls:", len(new_urls))
-            if new_urls:
-                self.sqs_queue.send_message(new_urls)
-                print(f"sent {len(new_urls)} new urls to the queue") 
-                self.mark_feed_as_checked(feed)
+        
+        max_workers = 4
+        
+        print(f"\nProcessing {len(feeds)} feeds with {max_workers} worker threads\n")
+        
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            executor.map(self.process_feed, feeds)
+            
+        print("All feeds processed")
 
     def process_queue_message(self):
+        # TODO: make this multi-threaded
         message = self.sqs_queue.receive_message()
         if not message:
             print("no message received")
@@ -341,14 +352,16 @@ if __name__ == "__main__":
         command = sys.argv[1]
         if command == "update_feeds":
             scraper.update_feeds_list()
+        elif command == "enqueue":
+            scraper.enqueue_new_feed_entries()
         elif command == "scrape":
             scraper.scrape()
         elif command == "tmp":
             scraper.tmp()
         else:
             print(f"unknown command: {command}")
-            print("available commands: update_feeds, scrape, tmp")
+            print("available commands: update_feeds, enqueue, scrape, tmp")
     else:
-        print("available commands: update_feeds, scrape, tmp")
+        print("available commands: update_feeds, enqueue, scrape, tmp")
 
 
