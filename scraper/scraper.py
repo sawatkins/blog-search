@@ -2,6 +2,7 @@ import json
 import math
 import sys
 import os
+import logging
 from time import sleep
 from dotenv import load_dotenv
 from psycopg2 import Error
@@ -14,6 +15,18 @@ import re
 from urllib.robotparser import RobotFileParser
 from urllib.parse import urlparse
 from concurrent.futures import ThreadPoolExecutor
+import threading
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(threadName)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.StreamHandler(),
+        logging.FileHandler('scraper.log')
+    ]
+)
+logger = logging.getLogger(__name__)
 
 class Scraper:
     def __init__(self):
@@ -36,7 +49,7 @@ class Scraper:
                 port="5432"
             )
         except (Exception, Error) as error:
-            print("Error while creating connection pool:", error)
+            logger.error("Error while creating connection pool: %s", error)
             sys.exit(1)
 
     def get_connection(self):
@@ -65,7 +78,7 @@ class Scraper:
                     cur.execute(schema)
                 conn.commit()
         except (Exception, Error) as error:
-            print("Error while initializing database:", error)
+            logger.error("Error while initializing database: %s", error)
             sys.exit(1)
         finally:
             self.release_connection(conn)
@@ -80,21 +93,21 @@ class Scraper:
             existing_feeds = {row[0] for row in cursor.fetchall()}        
             new_feeds = [feed for feed in smallweb_feeds if feed not in existing_feeds]
 
-            print(f"found {len(existing_feeds)} existing feeds")
-            print(f"found {len(new_feeds)} new feeds")
+            logger.info("Found %d existing feeds", len(existing_feeds))
+            logger.info("Found %d new feeds", len(new_feeds))
             
             if new_feeds:
                 insert_query = "INSERT INTO feeds (feed_url) VALUES (%s) ON CONFLICT DO NOTHING"
                 cursor.executemany(insert_query, [(feed,) for feed in new_feeds])
                 conn.commit()
-                print(f"Added {len(new_feeds)} new feeds to the database")
+                logger.info("Added %d new feeds to the database", len(new_feeds))
             else:
-                print("No new feeds to add")
+                logger.info("No new feeds to add")
             
             cursor.close()
         except Exception as e:
             conn.rollback()
-            print(f"Error updating feeds list: {e}")
+            logger.error("Error updating feeds list: %s", e)
         finally:
             self.release_connection(conn)
 
@@ -108,7 +121,7 @@ class Scraper:
             return list(set(feeds))
         
         except Exception as e:
-            print(f"Error downloading feeds file: {e}")
+            logger.error("Error downloading feeds file: %s", e)
             return []
     
     def get_all_feeds(self, only_due_for_update: bool = False):
@@ -122,7 +135,7 @@ class Scraper:
             feeds = [row[0] for row in cursor.fetchall()]
             return feeds
         except (Exception, Error) as error:
-            print(f"Error getting all feeds: {error}")
+            logger.error("Error getting all feeds: %s", error)
             return []
         finally:
             self.release_connection(conn)
@@ -134,7 +147,7 @@ class Scraper:
             cursor.execute("UPDATE feeds SET last_check_date = CURRENT_DATE WHERE feed_url = %s", (feed_url,))
             conn.commit()
         except (Exception, Error) as error:
-            print(f"Error marking feed as checked: {error}")
+            logger.error("Error marking feed as checked: %s", error)
         finally:
             self.release_connection(conn)
 
@@ -152,7 +165,7 @@ class Scraper:
             cursor.close()
             return exists
         except (Exception, Error) as error:
-            print(f"Error checking URL existence: {error}")
+            logger.error("Error checking URL existence: %s", error)
             return True
         finally:
             self.release_connection(conn)
@@ -178,14 +191,16 @@ class Scraper:
         return math.ceil(safety_margin * (num_urls * (timout + scrape_delay + processing_delay)))
     
     def process_feed(self, feed):
+        thread_name = threading.current_thread().name
+        logger.info("[%s] Processing feed: %s", thread_name, feed)
         try:
             new_urls = []
             parsed_feed = fastfeedparser.parse(feed)
             link = parsed_feed.feed.link
-            print(link)
-            print(len(parsed_feed.entries), "entries")
+            logger.info("[%s] Feed link: %s", thread_name, link)
+            logger.info("[%s] Found %d entries", thread_name, len(parsed_feed.entries))
         except Exception as e:
-            print(f"Error parsing feed {feed}: {e}")
+            logger.error("[%s] Error parsing feed %s: %s", thread_name, feed, e)
             return
 
         try:
@@ -193,20 +208,20 @@ class Scraper:
                 if hasattr(entry, 'link'):
                     entry_link = entry.link.strip().rstrip('/')
                     if not self.is_blog_post_url(entry_link):
-                        print(f"Skipping non-blog URL: {entry_link}")
+                        logger.debug("[%s] Skipping non-blog URL: %s", thread_name, entry_link)
                         continue
                     exists = self.url_exists_in_db(entry_link)
                     if not exists:
                         new_urls.append(entry_link)
-                    print(f"URL {entry_link}: {'exists' if exists else 'new'}")
+                    logger.debug("[%s] URL %s: %s", thread_name, entry_link, 'exists' if exists else 'new')
         except Exception as e:
-            print(f"Error processing feed {feed}: {e}")
+            logger.error("[%s] Error processing feed %s: %s", thread_name, feed, e)
             return
 
-        print("new urls:", len(new_urls))
+        logger.info("[%s] Found %d new URLs for feed %s", thread_name, len(new_urls), feed)
         if new_urls:
             self.sqs_queue.send_message(new_urls)
-            print(f"sent {len(new_urls)} new urls to the queue") 
+            logger.info("[%s] Sent %d new URLs to the queue", thread_name, len(new_urls))
             self.mark_feed_as_checked(feed)
     
     def enqueue_new_feed_entries(self):
@@ -215,18 +230,17 @@ class Scraper:
         
         max_workers = 4
         
-        print(f"\nProcessing {len(feeds)} feeds with {max_workers} worker threads\n")
+        logger.info("\nProcessing %d feeds with %d worker threads\n", len(feeds), max_workers)
         
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             executor.map(self.process_feed, feeds)
             
-        print("All feeds processed")
+        logger.info("All feeds processed")
 
     def process_queue_message(self):
-        # TODO: make this multi-threaded
         message = self.sqs_queue.receive_message()
         if not message:
-            print("no message received")
+            logger.info("No message received")
             return
 
         try:
@@ -234,59 +248,75 @@ class Scraper:
             body = json.loads(message['Body'])
             urls = body['urls']
         except Exception as e:
-            print(f"Error parsing message: {e}")
+            logger.error("Error parsing message: %s", e)
             return
 
         if len(urls) > 1:
             visibility_timeout = self.calculate_visibility_timeout(len(urls))
             self.sqs_queue.change_message_visibility(receipt_handle, visibility_timeout)
-            print(f"changed message visibility to {visibility_timeout} seconds")
+            logger.info("Changed message visibility to %d seconds", visibility_timeout)
         
+        urls_to_scrape = []
         for url in urls:
             if self.is_url_in_db(url):
-                print(f"url already in db: {url}")
-                continue
-
-            try:
-                print(f"scraping url: {url}")
-                self.scrape_url(url)
-            except Exception as e:
-                print(f"Error scraping url: {e}")
-                #TODO: keep track of errors and stop if too many errors
+                logger.debug("URL already in database: %s", url)
+            else:
+                urls_to_scrape.append(url)
+        
+        max_workers = 4  
+        logger.info("Processing %d URLs with %d worker threads", len(urls_to_scrape), max_workers)
+        
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            futures = [executor.submit(self.scrape_url_with_delay, url) for url in urls_to_scrape]
             
-            sleep(6)
+            for future in futures:
+                try:
+                    future.result()  
+                except Exception as e:
+                    logger.error("Error in thread: %s", e)
 
         self.sqs_queue.delete_message(receipt_handle)
-        print(f"deleted message")
+        logger.info("Deleted message")
         sleep(10)
     
+    def scrape_url_with_delay(self, url):
+        thread_name = threading.current_thread().name
+        try:
+            logger.info("[%s] Scraping URL: %s", thread_name, url)
+            self.scrape_url(url)
+        except Exception as e:
+            logger.error("[%s] Error scraping URL: %s", thread_name, e)
+        finally:
+            sleep(6)
+    
     def scrape_url(self, url: str):
+        thread_name = threading.current_thread().name
         parsed_url = urlparse(url)
         domain = f"{parsed_url.scheme}://{parsed_url.netloc}"
         if not self.robots_allows_scraping(domain, url):
-            print(f"robots.txt disallows scraping: {url}")
+            logger.warning("[%s] Robots.txt disallows scraping: %s", thread_name, url)
             return
         try:
             downloaded_content = trafilatura.fetch_url(url)
         except Exception as e:
-            print(f"Error downloading content for {url}: {e}")
+            logger.error("[%s] Error downloading content for %s: %s", thread_name, url, e)
             return
         if not downloaded_content:
-            print(f"failed to download content for {url}")
+            logger.warning("[%s] Failed to download content for %s", thread_name, url)
             return
         
         if not trafilatura.readability_lxml.is_probably_readerable(downloaded_content):
-            print(f"downloaded content for {url} is not readable")
+            logger.warning("[%s] Downloaded content for %s is not readable", thread_name, url)
             return
         
         extracted = trafilatura.extract(downloaded_content, output_format='json', with_metadata=True)
         if not extracted:
-            print(f"failed to extract text for {url}")
+            logger.warning("[%s] Failed to extract text for %s", thread_name, url)
             return
         
         extracted_dict = json.loads(extracted)
         if len(extracted_dict['raw_text'].split()) < 100:
-            print(f"extracted text for {url} is too short")
+            logger.warning("[%s] Extracted text for %s is too short", thread_name, url)
             return
         
         page = {
@@ -297,7 +327,7 @@ class Scraper:
             'text': extracted_dict['raw_text']
         }
         self.save_page(page)
-        #print(page)
+        logger.info("[%s] Successfully processed and saved page: %s", thread_name, url)
     
     def save_page(self, page: dict):
         conn = self.get_connection()
@@ -306,7 +336,7 @@ class Scraper:
             cursor.execute("INSERT INTO pages (title, url, fingerprint, date, text) VALUES (%s, %s, %s, %s, %s)", (page['title'], page['url'], page['fingerprint'], page['date'], page['text']))
             conn.commit()
         except (Exception, Error) as error:
-            print(f"Error saving page: {error}")
+            logger.error("Error saving page: %s", error)
         finally:
             self.release_connection(conn)
         
@@ -319,7 +349,7 @@ class Scraper:
             cursor.close()
             return exists
         except (Exception, Error) as error:
-            print(f"Error checking URL existence: {error}")
+            logger.error("Error checking URL existence: %s", error)
             return True
         finally:
             self.release_connection(conn)
@@ -333,7 +363,7 @@ class Scraper:
                 rp.read()
                 self.robots_cache[domain] = rp
             except Exception as e:
-                print(f"Error fetching robots.txt for {domain}, (continuing with scrape): {e}")
+                logger.warning("Error fetching robots.txt for %s (continuing with scrape): %s", domain, e)
                 return True
                 
         rp = self.robots_cache[domain]
@@ -341,7 +371,7 @@ class Scraper:
 
     def tmp(self):
         feeds = self.get_all_feeds(only_due_for_update=False)
-        print(len(feeds))
+        logger.info("Total feeds: %d", len(feeds))
 
 
 
@@ -359,9 +389,9 @@ if __name__ == "__main__":
         elif command == "tmp":
             scraper.tmp()
         else:
-            print(f"unknown command: {command}")
-            print("available commands: update_feeds, enqueue, scrape, tmp")
+            logger.error("Unknown command: %s", command)
+            logger.info("Available commands: update_feeds, enqueue, scrape, tmp")
     else:
-        print("available commands: update_feeds, enqueue, scrape, tmp")
+        logger.info("Available commands: update_feeds, enqueue, scrape, tmp")
 
 
