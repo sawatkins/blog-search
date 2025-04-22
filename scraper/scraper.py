@@ -11,6 +11,8 @@ import requests
 from sqs_queue import SQSQueue
 import trafilatura
 import re
+from urllib.robotparser import RobotFileParser
+from urllib.parse import urlparse
 
 class Scraper:
     def __init__(self):
@@ -19,6 +21,7 @@ class Scraper:
         self.init_pool()
         self.init_db()        
         self.sqs_queue = SQSQueue()
+        self.robots_cache = {}
 
     def init_pool(self):
         try:
@@ -168,10 +171,10 @@ class Scraper:
 
     def calculate_visibility_timeout(self, num_urls: int) -> int:
         timout = 6
-        scrape_delay = 5
+        scrape_delay = 6
         processing_delay = 2
-        safety_factor = 1.2
-        return math.ceil(safety_factor * (num_urls * (timout + scrape_delay) + processing_delay))
+        safety_margin = 1.2
+        return math.ceil(safety_margin * (num_urls * (timout + scrape_delay + processing_delay)))
     
     def enqueue_new_feed_entries(self):
         # TODO: make this multi-threaded
@@ -240,14 +243,23 @@ class Scraper:
                 print(f"Error scraping url: {e}")
                 #TODO: keep track of errors and stop if too many errors
             
-            sleep(5)
+            sleep(6)
 
         self.sqs_queue.delete_message(receipt_handle)
         print(f"deleted message")
         sleep(10)
     
     def scrape_url(self, url: str):
-        downloaded_content = trafilatura.fetch_url(url, timeout=6)
+        parsed_url = urlparse(url)
+        domain = f"{parsed_url.scheme}://{parsed_url.netloc}"
+        if not self.robots_allows_scraping(domain, url):
+            print(f"robots.txt disallows scraping: {url}")
+            return
+        try:
+            downloaded_content = trafilatura.fetch_url(url)
+        except Exception as e:
+            print(f"Error downloading content for {url}: {e}")
+            return
         if not downloaded_content:
             print(f"failed to download content for {url}")
             return
@@ -265,8 +277,6 @@ class Scraper:
         if len(extracted_dict['raw_text'].split()) < 100:
             print(f"extracted text for {url} is too short")
             return
-
-        # TODO: ensure text is in english
         
         page = {
             'title': extracted_dict['title'],
@@ -303,6 +313,20 @@ class Scraper:
         finally:
             self.release_connection(conn)
     
+    def robots_allows_scraping(self, domain: str, url: str) -> bool:
+        if domain not in self.robots_cache:
+            rp = RobotFileParser()
+            robots_url = f"{domain}/robots.txt"
+            try:
+                rp.set_url(robots_url)
+                rp.read()
+                self.robots_cache[domain] = rp
+            except Exception as e:
+                print(f"Error fetching robots.txt for {domain}, (continuing with scrape): {e}")
+                return True
+                
+        rp = self.robots_cache[domain]
+        return rp.can_fetch("*", url)
 
     def tmp(self):
         feeds = self.get_all_feeds(only_due_for_update=False)
