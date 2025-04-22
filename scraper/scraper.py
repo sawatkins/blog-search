@@ -10,6 +10,7 @@ import fastfeedparser
 import requests
 from sqs_queue import SQSQueue
 import trafilatura
+import re
 
 class Scraper:
     def __init__(self):
@@ -152,6 +153,19 @@ class Scraper:
         finally:
             self.release_connection(conn)
     
+    def is_blog_post_url(self, url: str) -> bool:
+        non_blog_patterns = [
+            r'^.*/(about|links|tags|categories|archive|contact)/?$',  
+            r'^.*/(author|tag|category)/[^/]+/?$',                    
+            r'^.*/(tag|category)$'                                   
+        ]
+        
+        for pattern in non_blog_patterns:
+            if re.search(pattern, url, re.IGNORECASE):
+                return False
+        
+        return True
+    
     def enqueue_new_feed_entries(self):
         # TODO: make this multi-threaded
         # TODO: add logic to handle errors
@@ -172,7 +186,9 @@ class Scraper:
                 for entry in parsed_feed.entries:
                     if hasattr(entry, 'link'):
                         entry_link = entry.link.strip().rstrip('/')
-                        # TODO: remove known url patterns that are not blog posts
+                        if not self.is_blog_post_url(entry_link):
+                            print(f"Skipping non-blog URL: {entry_link}")
+                            continue
                         exists = self.url_exists_in_db(entry_link)
                         if not exists:
                             new_urls.append(entry_link)
@@ -242,6 +258,8 @@ class Scraper:
         if len(extracted_dict['raw_text']) < 100:
             print(f"extracted text for {url} is too short")
             return
+
+        # TODO: ensure text is in english
         
         page = {
             'title': extracted_dict['title'],
