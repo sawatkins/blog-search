@@ -1,5 +1,5 @@
-from datetime import datetime
 import json
+import math
 import sys
 import os
 from time import sleep
@@ -165,10 +165,16 @@ class Scraper:
                 return False
         
         return True
+
+    def calculate_visibility_timeout(self, num_urls: int) -> int:
+        timout = 6
+        scrape_delay = 5
+        processing_delay = 2
+        safety_factor = 1.2
+        return math.ceil(safety_factor * (num_urls * (timout + scrape_delay) + processing_delay))
     
     def enqueue_new_feed_entries(self):
         # TODO: make this multi-threaded
-        # TODO: add logic to handle errors
         feeds = self.get_all_feeds(only_due_for_update=False) #True in prod
         feeds = feeds[6000:6005] # subset of feeds for testing
         for feed in feeds:
@@ -217,9 +223,10 @@ class Scraper:
             print(f"Error parsing message: {e}")
             return
 
-        if len(urls) > 3:
-            self.sqs_queue.change_message_visibility(receipt_handle, len(urls) * 3 * 5)
-            print(f"changed message visibility to {len(urls) * 3 * 5} seconds")
+        if len(urls) > 1:
+            visibility_timeout = self.calculate_visibility_timeout(len(urls))
+            self.sqs_queue.change_message_visibility(receipt_handle, visibility_timeout)
+            print(f"changed message visibility to {visibility_timeout} seconds")
         
         for url in urls:
             if self.is_url_in_db(url):
@@ -240,7 +247,7 @@ class Scraper:
         sleep(10)
     
     def scrape_url(self, url: str):
-        downloaded_content = trafilatura.fetch_url(url)
+        downloaded_content = trafilatura.fetch_url(url, timeout=6)
         if not downloaded_content:
             print(f"failed to download content for {url}")
             return
@@ -255,7 +262,7 @@ class Scraper:
             return
         
         extracted_dict = json.loads(extracted)
-        if len(extracted_dict['raw_text']) < 100:
+        if len(extracted_dict['raw_text'].split()) < 100:
             print(f"extracted text for {url} is too short")
             return
 
@@ -268,9 +275,7 @@ class Scraper:
             'date': extracted_dict['date'],
             'text': extracted_dict['raw_text']
         }
-
         self.save_page(page)
-        
         #print(page)
     
     def save_page(self, page: dict):

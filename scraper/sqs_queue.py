@@ -38,7 +38,7 @@ class SQSQueue:
             print(f"Error sending message to queue: {str(e)}")
             return None
     
-    def receive_message(self, wait_time_seconds=10, visibility_timeout=60):
+    def receive_message(self, wait_time_seconds=10, visibility_timeout=20):
         try:
             response = self.sqs_client.receive_message(
                 QueueUrl=self.queue_url,
