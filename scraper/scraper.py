@@ -16,8 +16,8 @@ from urllib.robotparser import RobotFileParser
 from urllib.parse import urlparse
 from concurrent.futures import ThreadPoolExecutor
 import threading
+from contextlib import contextmanager
 
-# Configure logging
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(threadName)s - %(levelname)s - %(message)s',
@@ -40,8 +40,8 @@ class Scraper:
     def init_pool(self):
         try:
             self.connection_pool = pool.ThreadedConnectionPool(
-                minconn=1,  
-                maxconn=10, 
+                minconn=4,  
+                maxconn=24, 
                 host=os.getenv('PGHOST'),
                 database=os.getenv('PGDATABASE'),
                 user=os.getenv('PGUSER'),
@@ -69,47 +69,42 @@ class Scraper:
         self.close_pool()
     
     def init_db(self):
-        conn = self.get_connection()
         try:
             filepath = os.path.join(os.path.dirname(__file__), '..', 'db', 'schema.sql')
             with open(filepath, 'r') as f:
                 schema = f.read()
-                with conn.cursor() as cur:
-                    cur.execute(schema)
-                conn.commit()
+                with self.db_connection() as conn:
+                    with conn.cursor() as cur:
+                        cur.execute(schema)
+                    conn.commit()
         except (Exception, Error) as error:
             logger.error("Error while initializing database: %s", error)
             sys.exit(1)
-        finally:
-            self.release_connection(conn)
     
     def update_feeds_list(self):
         smallweb_feeds = self.get_smallweb_feeds()
 
-        conn = self.get_connection()
         try:
-            cursor = conn.cursor()
-            cursor.execute("SELECT feed_url FROM feeds")
-            existing_feeds = {row[0] for row in cursor.fetchall()}        
-            new_feeds = [feed for feed in smallweb_feeds if feed not in existing_feeds]
+            with self.db_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute("SELECT feed_url FROM feeds")
+                existing_feeds = {row[0] for row in cursor.fetchall()}        
+                new_feeds = [feed for feed in smallweb_feeds if feed not in existing_feeds]
 
-            logger.info("Found %d existing feeds", len(existing_feeds))
-            logger.info("Found %d new feeds", len(new_feeds))
-            
-            if new_feeds:
-                insert_query = "INSERT INTO feeds (feed_url) VALUES (%s) ON CONFLICT DO NOTHING"
-                cursor.executemany(insert_query, [(feed,) for feed in new_feeds])
-                conn.commit()
-                logger.info("Added %d new feeds to the database", len(new_feeds))
-            else:
-                logger.info("No new feeds to add")
-            
-            cursor.close()
+                logger.info("Found %d existing feeds", len(existing_feeds))
+                logger.info("Found %d new feeds", len(new_feeds))
+                
+                if new_feeds:
+                    insert_query = "INSERT INTO feeds (feed_url) VALUES (%s) ON CONFLICT DO NOTHING"
+                    cursor.executemany(insert_query, [(feed,) for feed in new_feeds])
+                    conn.commit()
+                    logger.info("Added %d new feeds to the database", len(new_feeds))
+                else:
+                    logger.info("No new feeds to add")
+                
+                cursor.close()
         except Exception as e:
-            conn.rollback()
             logger.error("Error updating feeds list: %s", e)
-        finally:
-            self.release_connection(conn)
 
     def get_smallweb_feeds(self) -> list[str]:
         feeds_file_url = 'https://raw.githubusercontent.com/kagisearch/smallweb/refs/heads/main/smallweb.txt'
@@ -125,31 +120,27 @@ class Scraper:
             return []
     
     def get_all_feeds(self, only_due_for_update: bool = False):
-        conn = self.get_connection()
         try:
-            cursor = conn.cursor()
-            if only_due_for_update:
-                cursor.execute("SELECT feed_url FROM feeds WHERE last_check_date < CURRENT_DATE - INTERVAL '1 day'")
-            else:
-                cursor.execute("SELECT feed_url FROM feeds")
-            feeds = [row[0] for row in cursor.fetchall()]
-            return feeds
+            with self.db_connection() as conn:
+                cursor = conn.cursor()
+                if only_due_for_update:
+                    cursor.execute("SELECT feed_url FROM feeds WHERE last_check_date < CURRENT_DATE - INTERVAL '1 day'")
+                else:
+                    cursor.execute("SELECT feed_url FROM feeds")
+                feeds = [row[0] for row in cursor.fetchall()]
+                return feeds
         except (Exception, Error) as error:
             logger.error("Error getting all feeds: %s", error)
             return []
-        finally:
-            self.release_connection(conn)
     
     def mark_feed_as_checked(self, feed_url: str):
-        conn = self.get_connection()
         try:
-            cursor = conn.cursor()
-            cursor.execute("UPDATE feeds SET last_check_date = CURRENT_DATE WHERE feed_url = %s", (feed_url,))
-            conn.commit()
+            with self.db_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute("UPDATE feeds SET last_check_date = CURRENT_DATE WHERE feed_url = %s", (feed_url,))
+                conn.commit()
         except (Exception, Error) as error:
             logger.error("Error marking feed as checked: %s", error)
-        finally:
-            self.release_connection(conn)
 
     def scrape(self):
         #self.enqueue_new_feed_entries()
@@ -157,18 +148,16 @@ class Scraper:
             self.process_queue_message()
     
     def url_exists_in_db(self, url: str) -> bool:
-        conn = self.get_connection()
         try:
-            cursor = conn.cursor()
-            cursor.execute("SELECT EXISTS(SELECT 1 FROM pages WHERE url = %s)", (url,))
-            exists = cursor.fetchone()[0]
-            cursor.close()
-            return exists
+            with self.db_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute("SELECT EXISTS(SELECT 1 FROM pages WHERE url = %s)", (url,))
+                exists = cursor.fetchone()[0]
+                cursor.close()
+                return exists
         except (Exception, Error) as error:
             logger.error("Error checking URL existence: %s", error)
             return True
-        finally:
-            self.release_connection(conn)
     
     def is_blog_post_url(self, url: str) -> bool:
         non_blog_patterns = [
@@ -330,29 +319,26 @@ class Scraper:
         logger.info("[%s] Successfully processed and saved page: %s", thread_name, url)
     
     def save_page(self, page: dict):
-        conn = self.get_connection()
         try:
-            cursor = conn.cursor()
-            cursor.execute("INSERT INTO pages (title, url, fingerprint, date, text) VALUES (%s, %s, %s, %s, %s)", (page['title'], page['url'], page['fingerprint'], page['date'], page['text']))
-            conn.commit()
+            with self.db_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute("INSERT INTO pages (title, url, fingerprint, date, text) VALUES (%s, %s, %s, %s, %s)", 
+                              (page['title'], page['url'], page['fingerprint'], page['date'], page['text']))
+                conn.commit()
         except (Exception, Error) as error:
             logger.error("Error saving page: %s", error)
-        finally:
-            self.release_connection(conn)
-        
+    
     def is_url_in_db(self, url: str) -> bool:
-        conn = self.get_connection()
         try:
-            cursor = conn.cursor()
-            cursor.execute("SELECT EXISTS(SELECT 1 FROM pages WHERE url = %s)", (url,))
-            exists = cursor.fetchone()[0]
-            cursor.close()
-            return exists
+            with self.db_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute("SELECT EXISTS(SELECT 1 FROM pages WHERE url = %s)", (url,))
+                exists = cursor.fetchone()[0]
+                cursor.close()
+                return exists
         except (Exception, Error) as error:
             logger.error("Error checking URL existence: %s", error)
             return True
-        finally:
-            self.release_connection(conn)
     
     def robots_allows_scraping(self, domain: str, url: str) -> bool:
         if domain not in self.robots_cache:
@@ -372,6 +358,21 @@ class Scraper:
     def tmp(self):
         feeds = self.get_all_feeds(only_due_for_update=False)
         logger.info("Total feeds: %d", len(feeds))
+
+    @contextmanager
+    def db_connection(self):
+        """Context manager for database connections."""
+        conn = None
+        try:
+            conn = self.get_connection()
+            yield conn
+        except Exception as e:
+            if conn:
+                conn.rollback()
+            raise e
+        finally:
+            if conn:
+                self.release_connection(conn)
 
 
 
