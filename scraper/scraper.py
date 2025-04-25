@@ -127,7 +127,7 @@ class Scraper:
             with self.db_connection() as conn:
                 cursor = conn.cursor()
                 if only_due_for_update:
-                    cursor.execute("SELECT feed_url FROM feeds WHERE last_check_date < CURRENT_DATE - INTERVAL '1 day'")
+                    cursor.execute("SELECT feed_url FROM feeds WHERE last_check_date < CURRENT_DATE - INTERVAL '1 day' OR last_check_date IS NULL")
                 else:
                     cursor.execute("SELECT feed_url FROM feeds")
                 feeds = [row[0] for row in cursor.fetchall()]
