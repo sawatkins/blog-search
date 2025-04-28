@@ -17,16 +17,27 @@ from urllib.parse import urlparse
 from concurrent.futures import ThreadPoolExecutor
 import threading
 from contextlib import contextmanager
+from datetime import datetime
 
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(threadName)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.StreamHandler(),
-        logging.FileHandler('scraper.log')
-    ]
-)
-logger = logging.getLogger(__name__)
+
+def setup_logger():
+    """Setup logging configuration with timestamped log file"""
+    logs_dir = os.path.join(os.path.dirname(__file__), 'logs')
+    os.makedirs(logs_dir, exist_ok=True)
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    log_file = os.path.join(logs_dir, f'{timestamp}_scraper.log')
+
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(threadName)s - %(levelname)s - %(message)s',
+        handlers=[
+            logging.StreamHandler(),
+            logging.FileHandler(log_file)
+        ]
+    )
+    return logging.getLogger(__name__)
+
+logger = setup_logger()
 
 class Scraper:
     def __init__(self):
@@ -147,8 +158,8 @@ class Scraper:
 
     def scrape(self):
         """Scrape all urls from the queue and save them to the database, multithreaded"""
-        self.enqueue_new_feed_entries(only_due_for_update=True)
-        max_workers = 4  
+        #self.enqueue_new_feed_entries(only_due_for_update=True)
+        max_workers = 8  
         logger.info("Starting scrape with %d worker threads", max_workers)
         
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
@@ -183,7 +194,7 @@ class Scraper:
             body = json.loads(message['Body'])
             urls = body['urls']
             
-            logger.info("Processing message with %d URLs", len(urls))
+            #logger.info("Processing message with %d URLs", len(urls))
             
             if len(urls) > 1:
                 visibility_timeout = self.calculate_visibility_timeout(len(urls))
@@ -198,6 +209,9 @@ class Scraper:
                     urls_to_scrape.append(url)
             
             logger.info("Processing %d new URLs sequentially", len(urls_to_scrape))
+
+            if len(urls_to_scrape) > 30:
+                urls_to_scrape = urls_to_scrape[:30]
             
             for url in urls_to_scrape:
                 try:
@@ -285,8 +299,8 @@ class Scraper:
             self.mark_feed_as_checked(feed)
     
     def enqueue_new_feed_entries(self):
-        feeds = self.get_all_feeds(only_due_for_update=False) #True in prod
-        feeds = feeds[6000:6005] # subset of feeds for testing
+        feeds = self.get_all_feeds(only_due_for_update=True) #True in prod
+        #feeds = feeds[6000:6005] # subset of feeds for testing
         
         max_workers = 4
         
