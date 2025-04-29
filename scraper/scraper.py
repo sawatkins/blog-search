@@ -1,23 +1,23 @@
 import json
-import math
-import sys
-import os
 import logging
-from time import sleep
-from dotenv import load_dotenv
-from psycopg2 import Error
-from psycopg2 import pool
-import fastfeedparser
-import requests
-from sqs_queue import SQSQueue
-import trafilatura
+import math
+import os
 import re
-from urllib.robotparser import RobotFileParser
-from urllib.parse import urlparse
+import sys
 from concurrent.futures import ThreadPoolExecutor
-import threading
 from contextlib import contextmanager
 from datetime import datetime
+from time import sleep
+from urllib.robotparser import RobotFileParser
+
+import fastfeedparser
+import requests
+import trafilatura
+from courlan import clean_url, get_base_url, is_valid_url
+from dotenv import load_dotenv
+from psycopg2 import Error, pool
+
+from sqs_queue import SQSQueue
 
 
 def setup_logger():
@@ -132,7 +132,20 @@ class Scraper:
             logger.error("Error downloading feeds file: %s", e)
             return []
     
-    def get_all_feeds(self, only_due_for_update: bool = False):
+    def enqueue_new_feed_entries(self):
+        feeds = self.get_all_feeds_from_db(only_due_for_update=True) #True in prod
+        #feeds = feeds[6000:6005] # subset of feeds for testing
+        
+        max_workers = 4
+        
+        logger.info("\nProcessing %d feeds with %d worker threads\n", len(feeds), max_workers)
+        
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            executor.map(self.process_feed, feeds)
+            
+        logger.info("All feeds processed")
+    
+    def get_all_feeds_from_db(self, only_due_for_update: bool = False):
         """Get list of all rss feeds from database"""
         try:
             with self.db_connection() as conn:
@@ -146,6 +159,57 @@ class Scraper:
         except (Exception, Error) as error:
             logger.error("Error getting all feeds: %s", error)
             return []
+
+    def process_feed(self, feed):
+        """Process a single feed, extract new urls and enqueue them"""
+        logger.info("Processing feed: %s", feed)
+        try:
+            new_urls = []
+            parsed_feed = fastfeedparser.parse(feed)
+            link = parsed_feed.feed.link
+            if not link:
+                logger.warning("Feed link not found")
+                return
+            logger.info("Feed link: %s", link)
+            logger.info("Found %d entries", len(parsed_feed.entries))
+        except Exception as e:
+            logger.error("Error parsing feed %s: %s", feed, e)
+            return
+
+        try:
+            for entry in parsed_feed.entries:
+                if hasattr(entry, 'link'):
+                    entry_link = entry.link.strip().rstrip('/')
+                    if not self.is_blog_post_url(entry_link):
+                        logger.debug("Skipping non-blog URL: %s", entry_link)
+                        continue
+                    exists = self.url_exists_in_db(entry_link)
+                    if not exists:
+                        new_urls.append(entry_link)
+                    logger.debug("URL %s: %s", entry_link, 'exists' if exists else 'new')
+        except Exception as e:
+            logger.error("Error processing feed %s: %s", feed, e)
+            return
+
+        logger.info("Found %d new URLs for feed %s", len(new_urls), feed)
+        if new_urls:
+            self.sqs_queue.send_message(new_urls)
+            logger.info("Sent %d new URLs to the queue", len(new_urls))
+            self.mark_feed_as_checked(feed)
+    
+    def is_blog_post_url(self, url: str) -> bool:
+        """Basic check if a url follow known non-blog patterns"""
+        non_blog_patterns = [
+            r'^.*/(about|links|tags|categories|archive|contact)/?$',  
+            r'^.*/(author|tag|category)/[^/]+/?$',                    
+            r'^.*/(tag|category)$'                                   
+        ]
+        
+        for pattern in non_blog_patterns:
+            if re.search(pattern, url, re.IGNORECASE):
+                return False
+        
+        return True
     
     def mark_feed_as_checked(self, feed_url: str):
         try:
@@ -187,8 +251,7 @@ class Scraper:
                 sleep(5)
     
     def process_single_message(self, message):
-        """Process a single message from the queue."""
-        
+        """Process a single message from the queue.""" 
         try:
             receipt_handle = message['ReceiptHandle']
             body = json.loads(message['Body'])
@@ -207,25 +270,43 @@ class Scraper:
                     logger.debug("URL already in database: %s", url)
                 else:
                     urls_to_scrape.append(url)
-            
-            logger.info("Processing %d new URLs sequentially", len(urls_to_scrape))
 
-            if len(urls_to_scrape) > 30:
+            if len(urls_to_scrape) > 30: # remove this limit later
                 urls_to_scrape = urls_to_scrape[:30]
             
+            # ensure that all urls are valid
+            urls_to_scrape = [url for url in urls_to_scrape if self.is_url_valid(url)]
+
+            # check robots and filter out urls that are not allowed to be scraped
+            urls_to_scrape = [url for url in urls_to_scrape if self.robots_allows_scraping(url)]
+            
+            error_count = 0
             for url in urls_to_scrape:
+                if error_count > 3:
+                    logger.error("Too many errors for %s, skipping remaining URLs", get_base_url(url))
+                    break
                 try:
+                    logger.info("Processing %d new URLs sequentially", len(urls_to_scrape))
                     self.scrape_url(url)
                     sleep(6) # basic rate limiting
                 except Exception as e:
                     logger.error("Error scraping URL %s: %s", url, e)
-            
+                    error_count += 1
+
             self.sqs_queue.delete_message(receipt_handle)
             logger.info("Deleted message after processing all URLs")
             
         except Exception as e:
             logger.error("Error processing message: %s", e)
 
+    def calculate_visibility_timeout(self, num_urls: int) -> int:
+        """Calculate visibility timeout for a message based on the number of urls"""
+        timout = 6
+        scrape_delay = 6
+        processing_delay = 2
+        safety_margin = 1.2
+        return math.ceil(safety_margin * (num_urls * (timout + scrape_delay + processing_delay)))
+    
     def url_exists_in_db(self, url: str) -> bool:
         """Check if a url already exists in the database"""
         try:
@@ -239,86 +320,31 @@ class Scraper:
             logger.error("Error checking URL existence: %s", error)
             return True
     
-    def is_blog_post_url(self, url: str) -> bool:
-        """Basic check if a url follow known non-blog patterns"""
-        non_blog_patterns = [
-            r'^.*/(about|links|tags|categories|archive|contact)/?$',  
-            r'^.*/(author|tag|category)/[^/]+/?$',                    
-            r'^.*/(tag|category)$'                                   
-        ]
-        
-        for pattern in non_blog_patterns:
-            if re.search(pattern, url, re.IGNORECASE):
-                return False
-        
-        return True
+    def is_url_valid(self, url: str) -> bool:
+        """Check if a url is valid"""
+        return is_valid_url(url)
 
-    def calculate_visibility_timeout(self, num_urls: int) -> int:
-        """Calculate visibility timeout for a message based on the number of urls"""
-        timout = 6
-        scrape_delay = 6
-        processing_delay = 2
-        safety_margin = 1.2
-        return math.ceil(safety_margin * (num_urls * (timout + scrape_delay + processing_delay)))
-    
-    def process_feed(self, feed):
-        """Process a single feed, extract new urls and enqueue them"""
-        logger.info("Processing feed: %s", feed)
-        try:
-            new_urls = []
-            parsed_feed = fastfeedparser.parse(feed)
-            link = parsed_feed.feed.link
-            if not link:
-                logger.warning("Feed link not found")
-                return
-            logger.info("Feed link: %s", link)
-            logger.info("Found %d entries", len(parsed_feed.entries))
-        except Exception as e:
-            logger.error("Error parsing feed %s: %s", feed, e)
-            return
-
-        try:
-            for entry in parsed_feed.entries:
-                if hasattr(entry, 'link'):
-                    entry_link = entry.link.strip().rstrip('/')
-                    if not self.is_blog_post_url(entry_link):
-                        logger.debug("Skipping non-blog URL: %s", entry_link)
-                        continue
-                    exists = self.url_exists_in_db(entry_link)
-                    if not exists:
-                        new_urls.append(entry_link)
-                    logger.debug("URL %s: %s", entry_link, 'exists' if exists else 'new')
-        except Exception as e:
-            logger.error("Error processing feed %s: %s", feed, e)
-            return
-
-        logger.info("Found %d new URLs for feed %s", len(new_urls), feed)
-        if new_urls:
-            self.sqs_queue.send_message(new_urls)
-            logger.info("Sent %d new URLs to the queue", len(new_urls))
-            self.mark_feed_as_checked(feed)
-    
-    def enqueue_new_feed_entries(self):
-        feeds = self.get_all_feeds(only_due_for_update=True) #True in prod
-        #feeds = feeds[6000:6005] # subset of feeds for testing
-        
-        max_workers = 4
-        
-        logger.info("\nProcessing %d feeds with %d worker threads\n", len(feeds), max_workers)
-        
-        with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            executor.map(self.process_feed, feeds)
-            
-        logger.info("All feeds processed")
+    def robots_allows_scraping(self, url: str) -> bool:
+        """Check if robots.txt allows scraping for a given domain and url"""
+        base_url = clean_url(url)
+        if base_url not in self.robots_cache:
+            rp = RobotFileParser()
+            robots_url = f"{base_url}/robots.txt"
+            try:
+                rp.set_url(robots_url)
+                rp.read()
+                self.robots_cache[base_url] = rp
+            except Exception as e:
+                logger.warning("Error fetching robots.txt for %s (continuing with scrape): %s", base_url, e)
+                return True
+                
+        rp = self.robots_cache[base_url]
+        return rp.can_fetch("*", url)
 
     def scrape_url(self, url: str):
         """Scrape a single url, save it to the database if it's a blog post"""
         logger.info("Scraping URL: %s", url)
-        parsed_url = urlparse(url)
-        domain = f"{parsed_url.scheme}://{parsed_url.netloc}"
-        if not self.robots_allows_scraping(domain, url):
-            logger.warning("Robots.txt disallows scraping: %s", url)
-            return
+
         try:
             downloaded_content = trafilatura.fetch_url(url)
         except Exception as e:
@@ -329,7 +355,7 @@ class Scraper:
             return
         
         if not trafilatura.readability_lxml.is_probably_readerable(downloaded_content):
-            logger.warning("Downloaded content for %s is not readable", url)
+            logger.warning("Downloaded content for %s is not readerable", url)
             return
         
         extracted = trafilatura.extract(downloaded_content, output_format='json', with_metadata=True)
@@ -362,25 +388,9 @@ class Scraper:
                 conn.commit()
         except (Exception, Error) as error:
             logger.error("Error saving page: %s", error)
-    
-    def robots_allows_scraping(self, domain: str, url: str) -> bool:
-        if domain not in self.robots_cache:
-            rp = RobotFileParser()
-            robots_url = f"{domain}/robots.txt"
-            try:
-                rp.set_url(robots_url)
-                rp.read()
-                self.robots_cache[domain] = rp
-            except Exception as e:
-                logger.warning("Error fetching robots.txt for %s (continuing with scrape): %s", domain, e)
-                return True
-                
-        rp = self.robots_cache[domain]
-        return rp.can_fetch("*", url)
 
     def tmp(self):
-        feeds = self.get_all_feeds(only_due_for_update=False)
-        logger.info("Total feeds: %d", len(feeds))
+        pass
 
     @contextmanager
     def db_connection(self):
