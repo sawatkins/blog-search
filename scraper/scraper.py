@@ -51,14 +51,15 @@ class Scraper:
     def init_pool(self):
         try:
             self.connection_pool = pool.ThreadedConnectionPool(
-                minconn=4,  
-                maxconn=24, 
+                minconn=16,  
+                maxconn=220, 
                 host=os.getenv('PGHOST'),
                 database=os.getenv('PGDATABASE'),
                 user=os.getenv('PGUSER'),
                 password=os.getenv('PGPASSWORD'),
                 port="5432"
             )
+            sleep(15) # wait for connection pool to be ready
         except (Exception, Error) as error:
             logger.error("Error while creating connection pool: %s", error)
             sys.exit(1)
@@ -223,7 +224,7 @@ class Scraper:
     def scrape(self):
         """Scrape all urls from the queue and save them to the database, multithreaded"""
         #self.enqueue_new_feed_entries(only_due_for_update=True)
-        max_workers = 8  
+        max_workers = 200  
         logger.info("Starting scrape with %d worker threads", max_workers)
         
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
@@ -287,8 +288,9 @@ class Scraper:
                     break
                 try:
                     logger.info("Processing %d new URLs sequentially", len(urls_to_scrape))
-                    self.scrape_url(url)
-                    sleep(6) # basic rate limiting
+                    self.scrape_url(url) #add check_url(url)? 
+                    if url != urls_to_scrape[-1]:
+                        sleep(5) # basic rate limiting
                 except Exception as e:
                     logger.error("Error scraping URL %s: %s", url, e)
                     error_count += 1
