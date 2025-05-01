@@ -35,4 +35,4 @@ CREATE TABLE IF NOT EXISTS query_logs (
 );
 
 -- Index for full-text search
--- CREATE INDEX IF NOT EXISTS pages_tsv_idx ON pages USING gin(page_tsv);
+CREATE INDEX IF NOT EXISTS pages_tsv_idx ON pages USING gin(page_tsv);

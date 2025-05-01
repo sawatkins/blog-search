@@ -64,7 +64,7 @@ class SearchEngine:
         conn = self.get_connection()
         try:
             with conn.cursor() as cursor:
-                cursor.execute('SELECT COUNT(*) FROM pages_old')
+                cursor.execute('SELECT COUNT(*) FROM pages')
                 result = cursor.fetchone()
                 return result[0] if result else 0
         finally:
@@ -86,10 +86,10 @@ class SearchEngine:
                 sql = """
                     SELECT title, url, date, text,
                         ts_rank_cd(page_tsv, phraseto_tsquery('english', %s)) as rank
-                    FROM pages_old
+                    FROM pages
                     WHERE page_tsv @@ phraseto_tsquery('english', %s)
                     ORDER BY rank DESC
-                    LIMIT 100
+                    LIMIT 20
                 """
                 cursor.execute(sql, (query_words, query_words))
                 results = cursor.fetchall()
@@ -97,7 +97,7 @@ class SearchEngine:
                 return [
                     {
                         'title': row[0],
-                        'url': row[1].strip("/"),
+                        'url': row[1].rstrip("/"),
                         'date': row[2],
                         'text': row[3]
                     }
