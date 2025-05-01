@@ -16,3 +16,4 @@ smallweb.txt
 config.yaml
 *Zone.Identifier
 *.log
+archive/*

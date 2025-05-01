@@ -1,8 +1,0 @@
-.git/
-.vscode/
-.DS_Store
-__pycache__/
-.venv/
-backup/*
-data/
-backup-venv/
