@@ -19,6 +19,7 @@ from psycopg2 import Error, pool
 
 from sqs_queue import SQSQueue
 
+MAX_WORKERS = 200
 
 def setup_logger():
     """Setup logging configuration with timestamped log file"""
@@ -51,15 +52,16 @@ class Scraper:
     def init_pool(self):
         try:
             self.connection_pool = pool.ThreadedConnectionPool(
-                minconn=16,  
-                maxconn=220, 
+                minconn=50,  
+                maxconn=600, 
                 host=os.getenv('PGHOST'),
                 database=os.getenv('PGDATABASE'),
                 user=os.getenv('PGUSER'),
                 password=os.getenv('PGPASSWORD'),
                 port="5432"
             )
-            sleep(15) # wait for connection pool to be ready
+            conn = self.connection_pool.getconn()
+            self.connection_pool.putconn(conn)
         except (Exception, Error) as error:
             logger.error("Error while creating connection pool: %s", error)
             sys.exit(1)
@@ -102,7 +104,7 @@ class Scraper:
                 cursor = conn.cursor()
                 cursor.execute("SELECT feed_url FROM feeds")
                 existing_feeds = {row[0] for row in cursor.fetchall()}        
-                new_feeds = [feed for feed in smallweb_feeds if feed not in existing_feeds]
+                new_feeds = [feed.strip() for feed in smallweb_feeds if feed not in existing_feeds]
 
                 logger.info("Found %d existing feeds", len(existing_feeds))
                 logger.info("Found %d new feeds", len(new_feeds))
@@ -119,25 +121,22 @@ class Scraper:
         except Exception as e:
             logger.error("Error updating feeds list: %s", e)
 
-    def get_smallweb_feeds(self) -> list[str]:
+    def get_smallweb_feeds(self) -> set[str]:
         """Get list of rss feeds from smallweb project"""
         feeds_file_url = 'https://raw.githubusercontent.com/kagisearch/smallweb/refs/heads/main/smallweb.txt'
         try:
             response = requests.get(feeds_file_url)
             response.raise_for_status()  
             
-            feeds = [line.strip().rstrip('/') for line in response.text.splitlines() if line.strip()]
-            return list(set(feeds))
+            return {line.strip().rstrip('/') for line in response.text.splitlines() if line.strip()}
         
         except Exception as e:
             logger.error("Error downloading feeds file: %s", e)
-            return []
+            return set()
     
-    def enqueue_new_feed_entries(self):
-        feeds = self.get_all_feeds_from_db(only_due_for_update=True) #True in prod
+    def enqueue_new_feed_entries(self, max_workers: int = MAX_WORKERS, only_due_for_update: bool = False):
+        feeds = self.get_all_feeds_from_db(only_due_for_update=only_due_for_update) #True in prod
         #feeds = feeds[6000:6005] # subset of feeds for testing
-        
-        max_workers = 4
         
         logger.info("\nProcessing %d feeds with %d worker threads\n", len(feeds), max_workers)
         
@@ -155,38 +154,41 @@ class Scraper:
                     cursor.execute("SELECT feed_url FROM feeds WHERE last_check_date < CURRENT_DATE - INTERVAL '1 day' OR last_check_date IS NULL")
                 else:
                     cursor.execute("SELECT feed_url FROM feeds")
-                feeds = [row[0] for row in cursor.fetchall()]
+                feeds = {row[0] for row in cursor.fetchall()}
                 return feeds
         except (Exception, Error) as error:
             logger.error("Error getting all feeds: %s", error)
-            return []
+            return set()
 
     def process_feed(self, feed):
         """Process a single feed, extract new urls and enqueue them"""
         logger.info("Processing feed: %s", feed)
-        try:
-            new_urls = []
+        try:  
             parsed_feed = fastfeedparser.parse(feed)
             link = parsed_feed.feed.link
             if not link:
-                logger.warning("Feed link not found")
-                return
-            logger.info("Feed link: %s", link)
-            logger.info("Found %d entries", len(parsed_feed.entries))
+                logger.warning("Feed link not found") 
+                return # is this necessary?
+            #logger.info("Feed link: %s", link)
+            logger.info("Found %d entries for feed %s", len(parsed_feed.entries), feed)
         except Exception as e:
             logger.error("Error parsing feed %s: %s", feed, e)
             return
 
+        new_urls = set()
         try:
             for entry in parsed_feed.entries:
                 if hasattr(entry, 'link'):
                     entry_link = entry.link.strip().rstrip('/')
+                    if not self.is_url_valid(entry_link):
+                        logger.debug("Skipping invalid URL: %s", entry_link)
+                        continue
                     if not self.is_blog_post_url(entry_link):
                         logger.debug("Skipping non-blog URL: %s", entry_link)
                         continue
                     exists = self.url_exists_in_db(entry_link)
                     if not exists:
-                        new_urls.append(entry_link)
+                        new_urls.add(entry_link)
                     logger.debug("URL %s: %s", entry_link, 'exists' if exists else 'new')
         except Exception as e:
             logger.error("Error processing feed %s: %s", feed, e)
@@ -194,16 +196,17 @@ class Scraper:
 
         logger.info("Found %d new URLs for feed %s", len(new_urls), feed)
         if new_urls:
-            self.sqs_queue.send_message(new_urls)
-            logger.info("Sent %d new URLs to the queue", len(new_urls))
+            limited_urls = list(new_urls)[:100] # to avoid too large message size
+            self.sqs_queue.send_message(limited_urls)
+            logger.info("Sent %d new URLs to the queue", len(limited_urls))
             self.mark_feed_as_checked(feed)
     
     def is_blog_post_url(self, url: str) -> bool:
         """Basic check if a url follow known non-blog patterns"""
         non_blog_patterns = [
-            r'^.*/(about|links|tags|categories|archive|contact)/?$',  
-            r'^.*/(author|tag|category)/[^/]+/?$',                    
-            r'^.*/(tag|category)$'                                   
+            r'^.*/(about|links|tags|categories|archive|contact)(/.*)?$',  
+            r'^.*/(author|tag|category)/[^/]+(/.*)?$',                    
+            r'^.*/(tag|category)(/.*)?$'                                   
         ]
         
         for pattern in non_blog_patterns:
@@ -221,10 +224,9 @@ class Scraper:
         except (Exception, Error) as error:
             logger.error("Error marking feed as checked: %s", error)
 
-    def scrape(self):
+    def scrape(self, max_workers: int = MAX_WORKERS):
         """Scrape all urls from the queue and save them to the database, multithreaded"""
         #self.enqueue_new_feed_entries(only_due_for_update=True)
-        max_workers = 200  
         logger.info("Starting scrape with %d worker threads", max_workers)
         
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
@@ -275,10 +277,7 @@ class Scraper:
             if len(urls_to_scrape) > 30: # remove this limit later
                 urls_to_scrape = urls_to_scrape[:30]
             
-            # ensure that all urls are valid
             urls_to_scrape = [url for url in urls_to_scrape if self.is_url_valid(url)]
-
-            # check robots and filter out urls that are not allowed to be scraped
             urls_to_scrape = [url for url in urls_to_scrape if self.robots_allows_scraping(url)]
             
             error_count = 0
@@ -416,10 +415,13 @@ if __name__ == "__main__":
     if len(sys.argv) > 1:
         command = sys.argv[1]
         if command == "update_feeds":
+            logger.info("UPDATING FEEDS LIST")
             scraper.update_feeds_list()
         elif command == "enqueue":
+            logger.info("ENQUEUE")
             scraper.enqueue_new_feed_entries()
         elif command == "scrape":
+            logger.info("SCRAPING")
             scraper.scrape()
         elif command == "tmp":
             scraper.tmp()

@@ -7,11 +7,16 @@ from dotenv import load_dotenv
 class SQSQueue:
     def __init__(self, queue_name='blogsearch-to-scrape'):
         try:
-            self.sqs_client = boto3.client(
+            # Configure boto3 to use a session with a larger connection pool
+            session = boto3.Session()
+            self.sqs_client = session.client(
                 'sqs',
                 region_name='us-west-2',
                 aws_access_key_id=os.environ.get('AWS_ACCESS_KEY_ID'),
-                aws_secret_access_key=os.environ.get('AWS_SECRET_ACCESS_KEY')
+                aws_secret_access_key=os.environ.get('AWS_SECRET_ACCESS_KEY'),
+                config=boto3.session.Config(
+                    max_pool_connections=200,  # Match with your max worker count
+                )
             )
             
             response = self.sqs_client.get_queue_url(QueueName=queue_name)
