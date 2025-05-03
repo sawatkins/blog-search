@@ -34,5 +34,12 @@ CREATE TABLE IF NOT EXISTS query_logs (
     timestamp TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Table for storing robots.txt data
+CREATE TABLE IF NOT EXISTS robots_cache (
+    domain TEXT PRIMARY KEY,
+    content TEXT,
+    last_fetched TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
 -- Index for full-text search
 CREATE INDEX IF NOT EXISTS pages_tsv_idx ON pages USING gin(page_tsv);
