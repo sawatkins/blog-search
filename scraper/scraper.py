@@ -262,10 +262,10 @@ class Scraper:
             
             #logger.info("Processing message with %d URLs", len(urls))
             
-            if len(urls) > 1:
-                visibility_timeout = self.calculate_visibility_timeout(len(urls))
-                self.sqs_queue.change_message_visibility(receipt_handle, visibility_timeout)
-                logger.info("Changed message visibility to %d seconds", visibility_timeout)
+            visibility_timeout = self.calculate_visibility_timeout(len(urls))
+            self.sqs_queue.change_message_visibility(receipt_handle, visibility_timeout)
+            logger.info("Changed message visibility to %d seconds", visibility_timeout)
+            task_timeout = int(visibility_timeout * 0.8)
             
             urls_to_scrape = []
             for url in urls:
@@ -305,7 +305,7 @@ class Scraper:
         timout = 6
         scrape_delay = 6
         processing_delay = 2
-        safety_margin = 1.2
+        safety_margin = 1.5
         return math.ceil(safety_margin * (num_urls * (timout + scrape_delay + processing_delay)))
     
     def url_exists_in_db(self, url: str) -> bool:
@@ -325,22 +325,69 @@ class Scraper:
         """Check if a url is valid"""
         return is_valid_url(url)
 
+    def get_robots_from_db(self, domain: str):
+        """Get robots.txt data from database cache"""
+        try:
+            with self.db_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    "SELECT content FROM robots_cache WHERE domain = %s AND last_fetched > CURRENT_TIMESTAMP - INTERVAL '7 day'", 
+                    (domain,)
+                )
+                result = cursor.fetchone()
+                cursor.close()
+                if result:
+                    return result[0]
+                return None
+        except (Exception, Error) as error:
+            logger.error("Error retrieving robots data: %s", error)
+            return None
+            
+    def save_robots_to_db(self, domain: str, content: str):
+        """Save robots.txt data to database cache"""
+        try:
+            with self.db_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    "INSERT INTO robots_cache (domain, content) VALUES (%s, %s) "
+                    "ON CONFLICT (domain) DO UPDATE SET content = %s, last_fetched = CURRENT_TIMESTAMP",
+                    (domain, content, content)
+                )
+                conn.commit()
+                cursor.close()
+        except (Exception, Error) as error:
+            logger.error("Error saving robots data: %s", error)
+
     def robots_allows_scraping(self, url: str) -> bool:
         """Check if robots.txt allows scraping for a given domain and url"""
         base_url = clean_url(url)
-        if base_url not in self.robots_cache:
+        
+        if base_url in self.robots_cache:
+            return self.robots_cache[base_url].can_fetch("*", url)
+        
+        robots_content = self.get_robots_from_db(base_url)
+        if robots_content:
             rp = RobotFileParser()
-            robots_url = f"{base_url}/robots.txt"
-            try:
-                rp.set_url(robots_url)
-                rp.read()
-                self.robots_cache[base_url] = rp
-            except Exception as e:
-                logger.warning("Error fetching robots.txt for %s (continuing with scrape): %s", base_url, e)
-                return True
+            from io import StringIO
+            rp.parse(StringIO(robots_content).readlines())
+            self.robots_cache[base_url] = rp
+            return rp.can_fetch("*", url)
+            
+        rp = RobotFileParser()
+        robots_url = f"{base_url}/robots.txt"
+        try:
+            rp.set_url(robots_url)
+            rp.read()
+            self.robots_cache[base_url] = rp
+            
+            response = requests.get(robots_url, timeout=10)  
+            if response.status_code == 200:
+                self.save_robots_to_db(base_url, response.text)
                 
-        rp = self.robots_cache[base_url]
-        return rp.can_fetch("*", url)
+            return rp.can_fetch("*", url)
+        except Exception as e:
+            logger.warning("Error fetching robots.txt for %s (continuing with scrape): %s", base_url, e)
+            return True
 
     def scrape_url(self, url: str):
         """Scrape a single url, save it to the database if it's a blog post"""
