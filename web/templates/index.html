@@ -3,8 +3,19 @@
 {% block title %}Blog Search{% endblock %}
 
 {% block content %}
+    <div class="w-full flex justify-center">
+    <pre class="ascii-art">
+             v  ~.    v
+    v           /|
+               / |          v
+        v     /__|__
+            \--------/
+~^~^~^~^~^~^~`~~^~^~'~^~^~^~^~^~
+    ~^~^~~~^~~~^~~~^~~~^~^~
+</pre>
+    </div>
     <form id="search-form" class="w-full" action="/search" method="get">
-        <div class="relative flex justify-center w-full max-w-md mx-auto">
+        <div class="relative flex justify-center w-full max-w-2xl mx-auto">
             <input type="text" name="q" id="search-input"
                 class="w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-gray-400 focus:outline-none focus:ring-0 text-base"
                 autocomplete="off" autocapitalize="off"

@@ -49,7 +49,6 @@
             font-weight: 700;
         }
 
-        /* Element Styling */
         h3 {
             font-size: 1.3rem;
             font-weight: 500;
@@ -65,8 +64,18 @@
             color: #52718f;
             cursor: pointer;
         }
+        .ascii-art {
+            font-family: monospace;
+            white-space: pre;
+            line-height: 1.23;
+            letter-spacing: 0;
+            font-size: 14px;
+            tab-size: 4;
+            display: block;
+            overflow-x: auto;
+            padding: 1em;
+        }
 
-        /* Loading Spinner - can likely be removed or moved if not used globally */
         .loading-spinner {
             display: inline-block;
             width: 30px;
@@ -82,7 +91,7 @@
             100% { transform: rotate(360deg); }
         }
     </style>
-    {% block head_extra %}{% endblock %} {# Extra head elements if needed #}
+    {% block head_extra %}{% endblock %}
 </head>
 
 <body class="mx-auto px-4 sm:px-6 lg:px-8 max-w-4xl flex flex-col min-h-screen">
@@ -103,7 +112,6 @@
               <nav aria-label="Global" class="hidden md:block">
                 <ul class="flex items-center gap-5 text-sm">
                   <li>
-                    {# Update links to new paths if necessary later #}
                     <a class="text-gray-600 transition hover:text-gray-500/75" href="/about"> About </a>
                   </li>
 
@@ -117,10 +125,9 @@
         </div>
       </header>
 
-      <main class="flex-grow flex flex-col items-center pt-8"> {# Added padding-top #}
+      <main class="flex-grow flex flex-col items-center"> 
         <div class="w-full max-w-2xl">
             {% block content %}
-            {# Child template content goes here #}
             {% endblock %}
         </div>
     </main>
