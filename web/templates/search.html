@@ -1,9 +1,9 @@
 {% extends "base.html" %}
 
-{% block title %}Search Results for "{{ query }}" - Blog Search{% endblock %}
+{% block title %}{{ query }} - Blog Search{% endblock %}
 
 {% block content %}
-    {# Include search form again for convenience #}
+    <!-- {# Include search form again for convenience #}
     <form id="search-form" class="w-full mb-8" action="/search" method="get">
         <div class="relative flex justify-center w-full max-w-md mx-auto">
             <input type="text" name="q" id="search-input"
@@ -17,15 +17,15 @@
         </div>
     </form>
 
-    {# Display Search Results #}
+    {# Display Search Results #} -->
     <div id="search-results-container">
         {% if results is defined %}
             {% if results %}
-                <p class="text-sm mb-3">Found {{ results|length }} results. {{ time }} seconds.</p>
+                <p class="text-sm mb-2 mt-4">Found {{ results|length }} results. {{ time }} seconds.</p>
                 {% for post in results[:5] %}
                     <article class="mb-2">
-                        <h3 class="text-lg font-medium mb-1">{{ post.title[:90] if post.title else 'untitled' }}</h3>
-                        <p class="mb-1"><a href="{{ post.url|default('#') }}" target="_blank" class="text-blue-600 hover:underline">{{ post.url|default('No URL available') }}</a></p>
+                        <h3 class="text-lg font-medium">{{ post.title[:90] if post.title else 'untitled' }}</h3>
+                        <p class=""><a href="{{ post.url|default('#') }}" target="_blank" class="text-blue-600 hover:underline">{{ post.url|default('No URL available') }}</a></p>
                         <p class="mb-3 text-sm">
                             {% if post.date %}<strong><span class="text-xs font-mono">{{ post.date }}</span></strong> - {% endif %}
                             {{ post.text[:150] + '...' if post.text else 'No text available' }}
