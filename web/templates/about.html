@@ -1,82 +1,8 @@
-<!DOCTYPE html>
-<html lang="en">
+{% extends "base.html" %}
 
-<head>
-    <title>Blog Search - About</title>
-    <meta http-equiv="Content-type" content="text/html; charset=utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="description" content="Blog Search is a search engine focused on indexing personal blog content in English" />
-    <meta name="author" content="sawatkins" />
-    <meta name="keywords" content="blogsearch, blog, search, discover" />
-    <meta name="robots" content="noindex, nofollow">
-    <link rel="icon" type="image/x-icon" href="/favicon.ico">
-    <link rel="canonical" href="https://blogsearch.io/about" />
-    
-    <link rel="stylesheet" type="text/css" href="/static/css/style.css" />
-    
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Play:wght@400;700&display=swap" rel="stylesheet">
+{% block title %}About - Blog Search{% endblock %}
 
-</head>
-
-<body>
-    <div id="navbar">
-        <div class="navbar-logo">
-            <img src="/static/img/sailboat.svg" alt="">
-            <p class="navbar-links">
-                <span class="navbar-title">&nbsp;Blog<i><span>Search</span></i></span> &nbsp;&nbsp;
-                
-                <a href="/">Home</a> &nbsp;&nbsp;
-                <a href="/api">API</a> &nbsp;&nbsp;
-                <a href="/about">About</a> &nbsp;&nbsp;
-            </p>
-        </div>
-    </div>
-    <hr class="separator">
-
-    <div id="content">
-        <h2 style="font-weight: 400;">About Blog Search</h2>
-        <p>Blog Search is a search engine focused on indexing personal blog content in English. It currently indexes <strong>{{ posts_size or '_' }}</strong> blog posts.</p>
-
-        <div class="toggle-container">
-            <p><span id="toggle-info" class="toggle-button toggle-blue">More Information</span></p>
-            <div id="info-content" class="toggle-content">
-                <ul>
-                    <li>This project is still in development. <i>Everything will be greatly expanded and improved soon.</i> <a href="https://github.com/sawatkins/blog-search">GitHub.</a></li>
-                    <li>Queries work best with correctly spelled general keywords.</li>
-                    <li>It currently uses PostgreSQL's full text search for indexing and ranking.</li>
-                    <li>The current list of blogs to index is compiled from <a href="https://github.com/outcoldman/hackernews-personal-blogs" target="_blank">this list of HN blogs</a> and from <a href="https://ooh.directory/blogs/technology/" target="_blank">ooh's tech directory</a>.</li>
-                </ul>
-            </div>
-        </div>
-
-        <div class="toggle-container">
-            <p><span id="toggle-feedback" class="toggle-button toggle-orange">Feedback</span></p>
-            <div id="feedback-content" class="toggle-content">
-                <ul>
-                    <a href="https://tally.so/r/mBe7We">Feedback form</a>
-                </ul>
-            </div>
-        </div>
-    </div>
-
-    <hr style="margin-top: 1.4rem;">
-    <div class="footer">
-        <p>&copy; 2025 <span style="">blogsearch.io</span></p>
-    </div>
-
-    <script>
-        function setupToggle(toggleId, contentId) {
-            document.getElementById(toggleId).addEventListener('click', function () {
-                var content = document.getElementById(contentId);
-                content.style.display = content.style.display === 'none' ? 'block' : 'none';
-            });
-        }
-
-        setupToggle('toggle-info', 'info-content');
-        setupToggle('toggle-feedback', 'feedback-content');
-    </script>
-</body>
-
-</html>
+{% block content %}
+{# Existing content for about.html should go here #}
+<p>About page content...</p> {# Placeholder #}
+{% endblock %} 
