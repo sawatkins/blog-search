@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+
+{% block title %}Search Results for "{{ query }}" - Blog Search{% endblock %}
+
+{% block content %}
+    {# Include search form again for convenience #}
+    <form id="search-form" class="w-full mb-8" action="/search" method="get">
+        <div class="relative flex justify-center w-full max-w-md mx-auto">
+            <input type="text" name="q" id="search-input"
+                class="w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-gray-400 focus:outline-none focus:ring-0 text-base"
+                autocomplete="off" autocapitalize="off"
+                autocorrect="off" placeholder="Enter your search query..." value="{{ query or '' }}">
+            <button type="submit" id="search-button"
+                class="absolute right-0 top-0 bottom-0 bg-[#52718f] hover:bg-[#405c78] rounded-r-md w-10 flex items-center justify-center transition-colors cursor-pointer">
+                <img src="/static/img/arrow-sm-right.svg" alt="Search" class="w-4 h-4 brightness-0 invert">
+            </button>
+        </div>
+    </form>
+
+    {# Display Search Results #}
+    <div id="search-results-container">
+        {% if results is defined %}
+            {% if results %}
+                <p class="text-sm mb-3">Found {{ results|length }} results. {{ time }} seconds.</p>
+                {% for post in results[:5] %}
+                    <article class="mb-2">
+                        <h3 class="text-lg font-medium mb-1">{{ post.title[:90] if post.title else 'untitled' }}</h3>
+                        <p class="mb-1"><a href="{{ post.url|default('#') }}" target="_blank" class="text-blue-600 hover:underline">{{ post.url|default('No URL available') }}</a></p>
+                        <p class="mb-3 text-sm">
+                            {% if post.date %}<strong><span class="text-xs font-mono">{{ post.date }}</span></strong> - {% endif %}
+                            {{ post.text[:150] + '...' if post.text else 'No text available' }}
+                        </p>
+                    </article>
+                    {% if not loop.last %}<hr class="my-2">{% endif %}
+                {% endfor %}
+            {% else %}
+                <article class="mb-2">
+                    <h3 class="text-lg font-medium mb-1">No results found for "{{ query }}"</h3>
+                    <p>Try using correctly spelled general keywords.</p>
+                </article>
+            {% endif %}
+        {% else %}
+             <article class="mb-2">
+                <h3 class="text-lg font-medium mb-1">Enter a search query above.</h3>
+            </article>
+        {% endif %}
+    </div>
+{% endblock %}
+
+{% block scripts %}
+    <script>
+        // Optional: Focus search input on load if needed
+        // document.getElementById('search-input')?.focus();
+
+        // Prevent empty search submission from this page too
+        document.getElementById('search-form').addEventListener('submit', function (event) {
+            var query = document.getElementById('search-input').value.trim();
+            if (query === '') {
+                event.preventDefault(); // Prevent form submission
+                document.getElementById('search-input').focus();
+                console.log('Empty search prevented');
+            }
+        });
+    </script>
+{% endblock %} 

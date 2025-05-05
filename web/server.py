@@ -32,37 +32,40 @@ async def about(request: Request):
         "request": request,
     })
 
-@app.post("/search", response_class=HTMLResponse)
-async def search(request: Request, background_tasks: BackgroundTasks, query: str = Form(...)):
-    if not query.strip():
-        return PlainTextResponse("Please enter a search query.")
+@app.get("/search", response_class=HTMLResponse)
+async def search_page(request: Request, background_tasks: BackgroundTasks, q: str = Query(None)):
+    query = q.strip() if q else ""
+    results = []
+    search_time = 0
+
+    if query:
+        background_tasks.add_task(
+            search_engine.log_query,
+            query=query,
+            ip_address=request.headers.get("X-Forwarded-For", request.client.host),
+            user_agent=request.headers.get("user-agent", "")
+        )
+        
+        start_time = time.time()
+        results = search_engine.search(query)
+        end_time = time.time()
+        search_time = round(end_time - start_time, 2)
     
-    background_tasks.add_task(
-        search_engine.log_query,
-        query=query,
-        ip_address=request.headers.get("X-Forwarded-For", request.client.host),
-        user_agent=request.headers.get("user-agent", "")
-    )
-    
-    start_time = time.time()
-    results = search_engine.search(query)
-    end_time = time.time()
-    
-    return templates.TemplateResponse("search_results.html", {
+    return templates.TemplateResponse("search.html", {
         "request": request,
         "results": results,
         "query": query,
-        "time": round(end_time - start_time, 2)
+        "time": search_time
     })
 
 @app.get("/api/search", response_class=JSONResponse)
 async def api_search(q: str = Query(...)):
-    #TODO: checck if q is actual text (ex. quotes will pass as valid input)
-    if not q.strip():
+    query = q.strip() if q else None 
+    if not query:
         return JSONResponse({"results": []})
     
     try:
-        results = search_engine.search(q)
+        results = search_engine.search(query)
         api_results = []
         for result in results[:5]:  # Limit to 5 results
             api_results.append({

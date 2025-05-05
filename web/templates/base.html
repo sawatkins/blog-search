@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <title>{% block title %}Blog Search{% endblock %}</title> {# Allow overriding title #}
+    <meta http-equiv="Content-type" content="text/html; charset=utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="Blog Search is a search engine focused on indexing personal blog content in English" />
+    <meta name="author" content="sawatkins" />
+    <meta name="keywords" content="blogsearch, blog, search, discover" />
+    <meta name="robots" content="noindex, nofollow">
+    <link rel="icon" type="image/x-icon" href="/favicon.ico">
+    <link rel="canonical" href="https://blogsearch.io" />
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Play:wght@400;700&display=swap" rel="stylesheet">
+    <script defer src="https://umami.sawatkins.com/umami" data-website-id="a2446000-b7cd-480a-a4e9-4d777b8294d4"></script>
+
+    <style>
+        /* Ubuntu Font Family */
+        @import url('https://fonts.googleapis.com/css2?family=Ubuntu:wght@300;400;500;700&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Ubuntu+Mono:wght@400;700&display=swap');
+
+        @font-face {
+            font-family: 'Univers';
+            src: url('/static/fonts/univers-next-regular.woff2') format('woff2');
+            font-weight: normal;
+            font-style: normal;
+            font-display: swap;
+        }
+
+        body {
+            font-family: 'Ubuntu', sans-serif;
+            font-size: 15px;
+            color: #444;
+            line-height: 1.45;
+        }
+
+        code,
+        pre,
+        .font-mono,
+        details summary {
+            font-family: 'Ubuntu Mono', monospace;
+        }
+
+        .mono-heading {
+            font-family: 'Ubuntu Mono', monospace;
+            font-weight: 700;
+        }
+
+        /* Element Styling */
+        h3 {
+            font-size: 1.3rem;
+            font-weight: 500;
+            color: #333;
+        }
+
+        input, button {
+            font-size: 0.95rem;
+            padding: 0.4rem 0.7rem;
+        }
+
+        details summary {
+            color: #52718f;
+            cursor: pointer;
+        }
+
+        /* Loading Spinner - can likely be removed or moved if not used globally */
+        .loading-spinner {
+            display: inline-block;
+            width: 30px;
+            height: 30px;
+            border: 3px solid rgba(0,0,0,0.1);
+            border-radius: 50%;
+            border-top-color: #52718f;
+            animation: spin 0.35s ease-in-out infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+    {% block head_extra %}{% endblock %} {# Extra head elements if needed #}
+</head>
+
+<body class="mx-auto px-4 sm:px-6 lg:px-8 max-w-4xl flex flex-col min-h-screen">
+    <header class="bg-white">
+        <div class="mx-auto max-w-screen-xl px-4 sm:px-6 lg:px-8">
+          <div class="flex h-14 items-center justify-between">
+            <div class="flex-1 md:flex md:items-center md:gap-12">
+              <a class="block text-teal-600" href="/"> {# Link to home #}
+                <span class="sr-only">Home</span>
+                <div class="flex items-center">
+                    <img src="/static/img/sailboat.svg" alt="Blog Search logo" width="36">
+                    <span class="ml-2 text-lg font-medium text-gray-800">Blog Search</span>
+                </div>
+              </a>
+            </div>
+
+            <div class="md:flex md:items-center md:gap-12">
+              <nav aria-label="Global" class="hidden md:block">
+                <ul class="flex items-center gap-5 text-sm">
+                  <li>
+                    {# Update links to new paths if necessary later #}
+                    <a class="text-gray-600 transition hover:text-gray-500/75" href="/about"> About </a>
+                  </li>
+
+                  <li>
+                    <a class="text-gray-600 transition hover:text-gray-500/75" href="/api"> API </a>
+                  </li>
+                </ul>
+              </nav>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <main class="flex-grow flex flex-col items-center pt-8"> {# Added padding-top #}
+        <div class="w-full max-w-2xl">
+            {% block content %}
+            {# Child template content goes here #}
+            {% endblock %}
+        </div>
+    </main>
+
+    <hr class="my-4">
+    <footer class="text-center pb-4">
+        <p class="text-xs text-gray-500">&copy; 2025 blogsearch.io</p>
+    </footer>
+
+    {% block scripts %}
+    {# Common scripts can go here, page-specific scripts can override or use super() #}
+    {% endblock %}
+</body>
+
+</html> 
