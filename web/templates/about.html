@@ -4,18 +4,18 @@
 
 {% block content %}
 <div class="w-full">
-    <h3 class="text-lg font-medium mb-4">About Blog Search</h3>
+    <h3 class="text-lg font-medium mb-4">About</h3>
     
-    <p class="mb-4">Blog search is a search engine focused on indexing personal blog content in English.</p>
-    <p class="mb-4">It's a personal project of mine.</p>
+    <p class="mb-4">Blog search is a search engine focused on indexing personal blog content. Use it to find authentic, personal content from real people sharing their ideas and experiences. It's a personal project of mine.</p>
     
     <h3 class="font-medium text-md mb-2">More Information</h3>
     <ul class="mb-4 list-disc pl-5">
-        <li>This project is still in development. <i>Everything will be greatly expanded and improved soon.</i> <a href="https://github.com/sawatkins/blog-search" class="text-[#bf616a] hover:underline visited:text-[#bf616a]">GitHub.</a></li>
-        <li>Queries work best with correctly spelled general keywords.</li>
+        <li>This project is still in development. <i>Expect small improvements coming soon.</i></li>
+        <li>Queries work best with correctly spelled general keywords. In the future, I'll add support for natural language queries and typo support.</li>
         <li>It currently uses PostgreSQL's full text search for indexing and ranking.</li>
-        <li>It is hosted on a single-node Kubernetes cluster with k3s.</li>
-        <li>The current list of blogs to index is compiled from <a href="https://github.com/outcoldman/hackernews-personal-blogs" target="_blank" class="text-[#bf616a] hover:underline visited:text-[#bf616a]">this list of HN blogs</a> and from <a href="https://ooh.directory/blogs/technology/" target="_blank" class="text-[#bf616a] hover:underline visited:text-[#bf616a]">ooh's tech directory</a>.</li>
+        <li>It is hosted on a single-node Kubernetes cluster with k3s. Quite overkill for a personal project that gets no visitors, but I wanted a chance to learn Kubernetes.</li>
+        <li>The current list of blogs to index is compiled from <a href="https://github.com/kagisearch/smallweb" target="_blank" class="text-[#bf616a] hover:underline visited:text-[#bf616a]">Kagi's smallweb project</a>. I plan to add more blogs to the index in the future.</li>
+        <li><a href="https://github.com/sawatkins/blog-search" target="_blank" class="text-[#bf616a] hover:underline visited:text-[#bf616a]">GitHub</a></li>
     </ul>
     
     <h3 class="font-medium text-md">Feedback</h3>
