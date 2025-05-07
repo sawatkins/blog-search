@@ -84,14 +84,15 @@ class SearchEngine:
             
             with conn.cursor() as cursor:
                 sql = """
-                    SELECT title, url, date, text,
+                    SELECT title, url, date, LEFT(text, 300) as text,
                         ts_rank_cd(page_tsv, phraseto_tsquery('english', %s)) as rank
                     FROM pages
                     WHERE page_tsv @@ phraseto_tsquery('english', %s)
+                        AND ts_rank_cd(page_tsv, phraseto_tsquery('english', %s)) > 0.1
                     ORDER BY rank DESC
-                    LIMIT 20
+                    LIMIT 24
                 """
-                cursor.execute(sql, (query_words, query_words))
+                cursor.execute(sql, (query_words, query_words, query_words))
                 results = cursor.fetchall()
                 
                 return [
