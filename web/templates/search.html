@@ -4,47 +4,47 @@
 
 {% block content %}
     <!-- Redesigned search form -->
-    <!-- <form id="search-form" class="w-full mb-8" action="/search" method="get">
+    <form id="search-form" class="w-full mb-4" action="/search" method="get">
         <div class="relative flex justify-center w-full max-w-xl mx-auto">
             <input type="text" name="q" id="search-input"
-                class="w-full rounded-md border border-gray-300 px-4 py-2 pr-12 shadow-sm focus:border-#52718f focus:outline-none focus:ring-0 text-base"
+                class="w-full rounded-l-md border border-gray-200 px-4 py-2 pr-12 shadow-sm focus:border-[#52718f] focus:outline-none focus:ring-0 text-sm"
                 autocomplete="off" autocapitalize="off"
                 autocorrect="off" placeholder="Enter your search query..." value="{{ query or '' }}">
             <button type="submit" id="search-button"
-                class="absolute right-0 top-0 bottom-0 bg-[#52718f] hover:bg-[#405c78] rounded-r-md w-12 flex items-center justify-center transition-colors cursor-pointer">
+                class="bg-[#52718f] hover:bg-[#405c78] rounded-r-md w-10 flex items-center justify-center transition-colors cursor-pointer">
                 <img src="/static/img/arrow-sm-right.svg" alt="Search" class="w-4 h-4 brightness-0 invert">
             </button>
         </div>
-    </form> -->
+    </form>
 
     <div id="search-results-container" class="w-full mx-auto">
-        <div class="flex items-center justify-between border-b border-gray-200 pt-3 pb-3 mb-4">
-            <a class="text-gray-600 hover:text-gray-500 transition flex items-center text-sm" href="/">
+        <div class="flex items-center justify-between border-b border-gray-200 pb-3 mb-3">
+            <a class="text-gray-500 hover:text-[#52718f] transition-colors flex items-center text-sm" href="/">
                 <img src="/static/img/arrow-sm-left.svg" alt="Back" class="w-3 h-3 mr-2">
                 Back to Home
             </a>
             {% if results is defined and results %}
-            <span class="text-sm text-gray-500">Found {{ results|length }} results in {{ time }} seconds</span>
+            <span class="text-xs text-gray-500">Found {{ results|length }} results in {{ time }} seconds</span>
             {% endif %}
         </div>
 
-        <h2 class="text-md text-gray-500 mb-4">Results for: <span class=" text-gray-600">{{ query }}</span></h2>
+        <h2 class="text-sm text-gray-500 mb-3">Results for: <span class="font-medium text-[#52718f]">{{ query }}</span></h2>
 
         {% if results is defined %}
             {% if results %}
-                <div class="space-y-6">
+                <div class="space-y-2">
                     {% for post in results[:5] %}
-                        <article class="border-b border-gray-200 pb-6 last:border-none">
-                            <h3 class="text-lg md:text-xl font-semibold text-gray-800 mb-1">
-                                <a href="{{ post.url|default('#') }}" target="_blank" class="hover:underline">
+                        <article class="border-l-2 border-[#52718f] pl-3 mb-3 hover:bg-gray-50 transition-colors rounded-r-md">
+                            <h3 class="text-base font-medium text-gray-700 mb-1">
+                                <a href="{{ post.url|default('#') }}" target="_blank" class="hover:text-[#52718f] transition-colors">
                                     {{ post.title[:90] if post.title else 'untitled' }}
                                 </a>
                             </h3>
-                            <p class="text-sm text-gray-500 mb-2">
+                            <p class="text-xs text-gray-500 mb-1">
                                 {% if post.date %}<span class="font-mono mr-2">{{ post.date }}</span>{% endif %}
-                                <a href="{{ post.url|default('#') }}" target="_blank" class="hover:underline">{{ post.url|default('No URL available') }}</a>
+                                <a href="{{ post.url|default('#') }}" target="_blank" class="hover:text-[#52718f] transition-colors">{{ post.url|default('No URL available') }}</a>
                             </p>
-                            <p class="text-sm leading-relaxed text-gray-700">
+                            <p class="text-xs leading-relaxed text-gray-600">
                                 {{ post.text[:180] + '...' if post.text else 'No text available' }}
                             </p>
                         </article>

@@ -14,14 +14,14 @@
     ~^~^~~~^~~~^~~~^~~~^~^~
 </pre>
     </div>
-    <form id="search-form" class="w-full" action="/search" method="get">
+    <form id="search-form" class="w-full mb-4" action="/search" method="get">
         <div class="relative flex justify-center w-full max-w-2xl mx-auto">
             <input type="text" name="q" id="search-input"
-                class="w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-gray-400 focus:outline-none focus:ring-0 text-base"
+                class="w-full rounded-l-md border border-gray-200 px-4 py-2 pr-12 shadow-sm focus:border-[#52718f] focus:outline-none focus:ring-0 text-sm"
                 autocomplete="off" autocapitalize="off"
                 autocorrect="off" placeholder="Enter your search query..." autofocus value="{{ query or '' }}">
             <button type="submit" id="search-button"
-                class="absolute right-0 top-0 bottom-0 bg-[#52718f] hover:bg-[#405c78] rounded-r-md w-10 flex items-center justify-center transition-colors cursor-pointer">
+                class="bg-[#52718f] hover:bg-[#405c78] rounded-r-md w-10 flex items-center justify-center transition-colors cursor-pointer">
                 <img src="/static/img/arrow-sm-right.svg" alt="Search" class="w-4 h-4 brightness-0 invert">
             </button>
         </div>
