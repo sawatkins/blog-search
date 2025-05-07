@@ -1,50 +1,18 @@
-<!DOCTYPE html>
-<html lang="en">
+{% extends "base.html" %}
 
-<head>
-    <title>Blog Search - API</title>
-    <meta http-equiv="Content-type" content="text/html; charset=utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="description" content="Blog Search is a search engine focused on indexing personal blog content in English" />
-    <meta name="author" content="sawatkins" />
-    <meta name="keywords" content="blogsearch, blog, search, discover" />
-    <meta name="robots" content="noindex, nofollow">
-    <link rel="icon" type="image/x-icon" href="/favicon.ico">
-    <link rel="canonical" href="https://blogsearch.io/api" />
+{% block title %}API - Blog Search{% endblock %}
+
+{% block content %}
+<div class="w-full">
+    <h3 class="text-lg font-medium mb-4">API Documentation</h3>
     
-    <link rel="stylesheet" type="text/css" href="/static/css/style.css" />
+    <p class="mt-2 mb-4">Blog Search provides a simple API to access search results. Currently, there is not any authentication or rate limiting. If you are actually using this API, I would be love to hear from you. Please <a href="https://tally.so/r/mBe7We" target="_blank" class="text-[#bf616a] hover:underline visited:text-[#bf616a]">let me know</a>.</p>
     
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Play:wght@400;700&display=swap" rel="stylesheet">
-
-</head>
-
-<body>
-    <div id="navbar">
-        <div class="navbar-logo">
-            <img src="/static/img/sailboat.svg" alt="">
-            <p class="navbar-links">
-                <span class="navbar-title">&nbsp;Blog<i><span>Search</span></i></span> &nbsp;&nbsp;
-                
-                <a href="/">Home</a> &nbsp;&nbsp;
-                <a href="/api">API</a> &nbsp;&nbsp;
-                <!-- <a href="/about">About</a> &nbsp;&nbsp; -->
-            </p>
-        </div>
-    </div>
-    <hr class="separator">
-
-    <div id="content">
-        <h2 style="font-weight: 400;">API Documentation</h2>
-        <p>Blog Search provides a simple API to search through blog content programmatically.</p>
-
-        <h3>Search Endpoint</h3>
-        <pre><code>GET /api?q={query}</code></pre>
-        <p>Returns: JSON object with an array of search results, or an empty array if no results are found.</p>
-        
-        <h3>Response Format</h3>
-        <pre><code>{
+    <h3 class="font-medium text-md mb-2">Search Endpoint</h3>
+    <pre class="bg-gray-100 p-2 rounded my-2 font-mono"><code>GET /api/search?q={query}</code></pre>
+    
+    <p class="mb-2">Returns: JSON object with an array of search results, or an empty array if no results are found.</p>
+    <pre class="bg-gray-100 p-2 rounded my-4 font-mono"><code>{
   "results": [
     {
       "url": "https://example.com/blog-post",
@@ -56,16 +24,9 @@
   ]
 }</code></pre>
 
-        <h3>Example Usage</h3>
-        <pre><code style="white-space: pre-wrap;"># Python
-r = requests.get("https://blogsearch.io/api", params={"q": "your search query"})
+    <h3 class="font-medium text-md mb-2">Example Usage</h3>
+    <pre class="bg-gray-100 p-2 rounded my-2 font-mono"><code style="white-space: pre-wrap;"># Python
+r = requests.get("https://blogsearch.io/api/search", params={"q": "your search query"})
 results = r.json()["results"]</code></pre>
-    </div>
-
-    <hr style="margin-top: 1.4rem;">
-    <div class="footer">
-        <p>&copy; 2025 <span style="">blogsearch.io</span></p>
-    </div>
-</body>
-
-</html>
+</div>
+{% endblock %} 

@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <title>{% block title %}Blog Search{% endblock %}</title>
+    <meta http-equiv="Content-type" content="text/html; charset=utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="author" content="sawatkins" />
+    <meta name="robots" content="index, follow">
+    <link rel="icon" type="image/x-icon" href="/favicon.ico">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Ubuntu:wght@300;400;500;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Ubuntu+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+    <script defer src="https://umami.sawatkins.com/umami" data-website-id="a2446000-b7cd-480a-a4e9-4d777b8294d4"></script>
+
+    <style>
+        body {
+            font-family: 'Ubuntu', sans-serif;
+            font-size: 15px;
+            color: #444;
+            line-height: 1.45;
+        }
+
+        code,
+        pre,
+        .font-mono,
+        details summary {
+            font-family: 'Ubuntu Mono', monospace;
+        }
+
+        form input, form button {
+            font-size: 0.95rem;
+            padding: 0.4rem 0.7rem;
+        }
+
+        details summary {
+            color: #52718f;
+            cursor: pointer;
+        }
+        .ascii-art {
+            font-family: monospace;
+            white-space: pre;
+            line-height: 1.23;
+            letter-spacing: 0;
+            font-size: 14px;
+            tab-size: 4;
+            display: block;
+            overflow-x: auto;
+            padding: 1em;
+        }
+
+        .loading-spinner {
+            display: inline-block;
+            width: 30px;
+            height: 30px;
+            border: 3px solid rgba(0,0,0,0.1);
+            border-radius: 50%;
+            border-top-color: #52718f;
+            animation: spin 0.35s ease-in-out infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+    {% block head_extra %}{% endblock %}
+</head>
+
+<body class="mx-auto px-4 sm:px-6 lg:px-8 max-w-4xl flex flex-col min-h-screen bg-gray-200">
+    <header class="bg-white rounded-md shadow-md mb-4 mt-4">
+        <div class="mx-auto max-w-screen-xl px-3 sm:px-4 lg:px-5">
+          <div class="flex h-12 items-center justify-between">
+            <div class="flex-1 md:flex md:items-center md:gap-12">
+              <a class="block" href="/"> 
+                <span class="sr-only">Home</span>
+                <div class="flex items-center">
+                    <img src="/static/img/sailboat.svg" alt="Blog Search logo" width="32"">
+                    <span class="ml-2 text-base font-medium text-gray-700">Blog Search</span>
+                </div>
+              </a>
+            </div>
+
+            <div class="md:flex md:items-center md:gap-12">
+              <nav aria-label="Global" class="block">
+                <ul class="flex items-center gap-6 text-sm">
+                  <li>
+                    <a class="text-gray-600 transition hover:text-[#52718f] hover:underline" href="/about"> About </a>
+                  </li>
+
+                  <li>
+                    <a class="text-gray-600 transition hover:text-[#52718f] hover:underline" href="/api"> API </a>
+                  </li>
+                </ul>
+              </nav>
+            </div>
+          </div>
+        </div>
+      </header>
+
+
+      <main class="flex-grow flex flex-col items-center"> 
+        <div class="w-full bg-white rounded-md shadow-md p-4">
+            {% block content %}
+            {% endblock %}
+        </div>
+    </main>
+
+    <footer class="mt-4 mb-4 bg-white rounded-md shadow-md p-3 text-center">
+        <div class="flex justify-between items-center text-xs text-gray-500">
+            <span>&copy; 2025 blogsearch.io</span>
+            <div class="space-x-4">
+                <a href="#" class="text-gray-600 hover:text-[#52718f] hover:underline transition-colors">Status</a>
+                <a href="#" class="text-gray-600 hover:text-[#52718f] hover:underline transition-colors">Privacy</a>
+            </div>
+        </div>
+    </footer>
+
+    {% block scripts %}
+    {% endblock %}
+</body>
+
+</html> 

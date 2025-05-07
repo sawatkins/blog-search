@@ -1,289 +1,53 @@
-<!DOCTYPE html>
-<html lang="en">
+{% extends "base.html" %}
 
-<head>
-    <title>Blog Search</title>
-    <meta http-equiv="Content-type" content="text/html; charset=utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="description" content="Blog Search is a search engine focused on indexing personal blog content in English" />
-    <meta name="author" content="sawatkins" />
-    <meta name="keywords" content="blogsearch, blog, search, discover" />
-    <meta name="robots" content="noindex, nofollow">
-    <link rel="icon" type="image/x-icon" href="/favicon.ico">
-    <link rel="canonical" href="https://blogsearch.io" />
-    <link rel="stylesheet" href="/static/css/bamboo.min.css">
-    <script defer src="https://umami.sawatkins.com/umami" data-website-id="a2446000-b7cd-480a-a4e9-4d777b8294d4"></script>
-    
-    <style>
-        @font-face {
-            font-family: 'Univers';
-            src: url('/static/fonts/univers-next-regular.woff2') format('woff2');
-            font-weight: normal;
-            font-style: normal;
-            font-display: swap;
-        }
-        
-        .logo-container {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 0.5rem;
-            margin: 1rem 0;
-        }
-        
-        .logo-container a {
-            display: flex;
-            align-items: center;
-            text-decoration: none;
-            color: var(--b-txt);
-            gap: 0.5rem;
-        }
-        
-        .logo-container img {
-            display: block;
-        }
-        
-        .logo-container h1 {
-            font-weight: bold;
-            font-stretch: condensed;
-        }
-        
-        .toggle-button {
-            display: inline-block;
-            cursor: pointer;
-            padding: 0.2rem 0.5rem;
-            margin-right: 0.5rem;
-        }
-        
-        .toggle-blue { background-color: #52718f; color: white; }
-        .toggle-orange { background-color: #e67856; color: white; }
-        .toggle-green { background-color: #88b39b; color: white; }
-        
-        .toggle-content {
-            display: none;
-            margin-top: 0.5rem;
-        }
-        
-        .loading-container {
-            text-align: center;
-            padding: 2rem 0;
-        }
-        
-        .loading-spinner {
-            display: inline-block;
-            width: 30px;
-            height: 30px;
-            border: 3px solid rgba(0,0,0,0.1);
-            border-radius: 50%;
-            border-top-color: #52718f;
-            animation: spin 0.35s ease-in-out infinite;
-        }
-        
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-        }
-        
-        body {
-            max-width: 50rem;
-            font-family: 'Univers', sans-serif;
-        }
-        
-        input[type="text"] {
-            width: 100%;
-            max-width: 30rem;
-            border-radius: 4px;
-            padding: 0.5rem 0.75rem;
-            border: 1px solid #ddd;
-            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-            transition: all 0.1s ease;
-            font-size: 0.95rem;
-        }
-        
-        input[type="text"]:focus {
-            outline: none;
-            border-color: #aaa;
-            box-shadow: 0 1px 4px rgba(0, 0, 0, 0.15);
-        }
-        
-        .search-wrapper {
-            position: relative;
-            display: flex;
-            justify-content: center;
-            width: 100%;
-            max-width: 30rem;
-            margin: 0 auto;
-        }
-        
-        button#search-button {
-            position: absolute;
-            right: 0;
-            top: 0;
-            bottom: 0;
-            background: #52718f;
-            border: none;
-            border-radius: 0 4px 4px 0;
-            width: 2.5rem;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            cursor: pointer;
-            transition: background-color 0.1s ease;
-        }
-        
-        button#search-button:hover {
-            background: #405c78;
-        }
-        
-        button#search-button img {
-            width: 16px;
-            height: 16px;
-            filter: brightness(0) invert(1);
-        }
-        
-        article {
-            margin-bottom: 0.5rem;
-        }
-        
-        #search-results h3 {
-            margin-bottom: 0.2rem;
-            margin-top: 0.2rem;
-        }
-        
-        #search-results p {
-            margin-bottom: 0.2rem;
-        }
+{% block title %}Blog Search{% endblock %}
 
-        pre {
-            background-color: var(--b-bg-1);
-        }
-
-        pre code {
-            background: inherit;
-        }
-        
-        footer p {
-            font-size: 0.75rem;
-            color: #999;
-            margin: 0.2rem 0;
-        }
-    </style>
-</head>
-
-<body>
-    <header>
-        <div class="logo-container">
-            <a href="/">
-                <img src="/static/img/sailboat.svg" alt="Blog Search logo" width="40">
-                <h1>Blog Search</h1>
-            </a>
+{% block content %}
+    <div class="w-full flex justify-center">
+    <pre class="ascii-art">
+             v  ~.    v
+    v           /|
+               / |          v
+        v     /__|__
+            \--------/
+~^~^~^~^~^~^~`~~^~^~'~^~^~^~^~^~
+    ~^~^~~~^~~~^~~~^~~~^~^~
+</pre>
+    </div>
+    <form id="search-form" class="w-full mb-4" action="/search" method="get">
+        <div class="relative flex justify-center w-full max-w-2xl mx-auto">
+            <input type="text" name="q" id="search-input"
+                class="w-full rounded-l-md border border-gray-200 px-4 py-2 pr-12 shadow-sm focus:border-[#52718f] focus:outline-none focus:ring-0 text-sm"
+                autocomplete="off" autocapitalize="off"
+                autocorrect="off" placeholder="Enter your search query..." autofocus value="{{ query or '' }}">
+            <button type="submit" id="search-button"
+                class="bg-[#52718f] hover:bg-[#405c78] rounded-r-md w-10 flex items-center justify-center transition-colors cursor-pointer">
+                <img src="/static/img/arrow-sm-right.svg" alt="Search" class="w-4 h-4 brightness-0 invert">
+            </button>
         </div>
-    </header>
+    </form>
 
-    <main>
-        <form id="search-form">
-            <div class="search-wrapper">
-                <input type="text" name="query" id="search-input" autocomplete="off" autocapitalize="off" 
-                    autocorrect="off" placeholder="Enter your search query..." autofocus value="{{ query or '' }}">
-                <button type="submit" id="search-button">
-                    <img src="/static/img/arrow-sm-right.svg" alt="Search">
-                </button>
-            </div>
-        </form>
+    <div id="home-content" class="w-full mt-4 text-center">
+        <h3 class="font-medium text-lg">About</h3>
+        <p class="mb-1">Blog search is a search engine focused on indexing personal blog content.</p>
+        <p class="mb-1">Use it to find authentic, personal content from real people sharing their ideas and experiences.</p>
+        <p class="mb-1">It currently indexes <strong class="font-mono">{{ posts_size or '_' }}</strong> blog posts.</p>
+        <p class="mt-4">
+            <a href="#" class="text-[#bf616a] hover:underline visited:text-[#bf616a]">Latest posts</a> | 
+            <a href="#" class="text-[#bf616a] hover:underline visited:text-[#bf616a]">Random post</a>
+        </p>
+    </div>
+{% endblock %}
 
-        <div id="search-results">
-            <br>
-            <h3>About</h3>
-            <p>Blog search is a search engine focused on indexing personal blog content in English.</p>
-            <p>It's a personal project of mine. It currently indexes <strong>{{ posts_size or '_' }}</strong> blog posts.</p>
-            <br>
-            <details>
-                <summary>More Information</summary>
-                <ul>
-                    <li>This project is still in development. <i>Everything will be greatly expanded and improved soon.</i> <a href="https://github.com/sawatkins/blog-search">GitHub.</a></li>
-                    <li>Queries work best with correctly spelled general keywords.</li>
-                    <li>It currently uses PostgreSQL's full text search for indexing and ranking.</li>
-                    <li>It is hosted on a single-node Kubernetes cluster with k3s.</li>
-                    <li>The current list of blogs to index is compiled from <a href="https://github.com/outcoldman/hackernews-personal-blogs" target="_blank">this list of HN blogs</a> and from <a href="https://ooh.directory/blogs/technology/" target="_blank">ooh's tech directory</a>.</li>
-                </ul>
-            </details>
-
-            <details>
-                <summary>Feedback</summary>
-                <p>Please provide your feedback on <a href="https://tally.so/r/mBe7We" target="_blank">this form</a>.</p>
-            </details>
-
-            <details>
-                <summary>API</summary>
-                <p>Search result endpoint:</p>
-                <pre><code>GET /api/search?q={query}</code></pre>
-                <p>Returns: JSON object with an array of search results, or an empty array if no results are found.</p>
-                <pre><code>{
-  "results": [
-    {
-      "url": "https://example.com/blog-post",
-      "title": "Example Blog Post",
-      "date": "2023-04-15",
-      "snippet": "Post content snippet..."
-    },
-    // More results...
-  ]
-}</code></pre>
-
-                <p>Example Usage:</p>
-                <pre><code style="white-space: pre-wrap;"># Python
-r = requests.get("https://blogsearch.io/api/search", params={"q": "your search query"})
-results = r.json()["results"]</code></pre>
-            </details>
-        </div>
-    </main>
-
-    <hr style="margin-bottom: 1rem;">
-    <footer>
-        <p>&copy; 2025 blogsearch.io</p>
-    </footer>
-
+{% block scripts %}
     <script>
         document.getElementById('search-form').addEventListener('submit', function (event) {
-            event.preventDefault();
             var query = document.getElementById('search-input').value.trim();
             if (query === '') {
-                document.getElementById('search-input').value = '';
+                event.preventDefault();
                 document.getElementById('search-input').focus();
                 console.log('Empty search prevented');
-                return;
             }
-            document.getElementById('search-input').blur();
-            
-            const searchResults = document.getElementById('search-results');
-            searchResults.innerHTML = `
-                <div class="loading-container">
-                    <div class="loading-spinner"></div>
-                </div>
-            `;
-
-            fetch('/search', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/x-www-form-urlencoded',
-                },
-                body: 'query=' + encodeURIComponent(query)
-            })
-                .then(response => response.text())
-                .then(html => {
-                    document.getElementById('search-results').outerHTML = html;
-                })
-                .catch(error => {
-                    console.error('Error:', error);
-                    document.getElementById('search-results').innerHTML = `
-                        <div style="text-align: center; padding: 20px;">
-                            <p style="color: #e67856; font-weight: bold;">Error loading results</p>
-                            <p>Please try again later.</p>
-                        </div>
-                    `;
-                });
         });
     </script>
-</body>
-
-</html>
+{% endblock %}
