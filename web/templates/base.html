@@ -14,21 +14,12 @@
     <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Play:wght@400;700&display=swap" rel="stylesheet">
+    
     <script defer src="https://umami.sawatkins.com/umami" data-website-id="a2446000-b7cd-480a-a4e9-4d777b8294d4"></script>
 
     <style>
-        /* Ubuntu Font Family */
         @import url('https://fonts.googleapis.com/css2?family=Ubuntu:wght@300;400;500;700&display=swap');
         @import url('https://fonts.googleapis.com/css2?family=Ubuntu+Mono:wght@400;700&display=swap');
-
-        @font-face {
-            font-family: 'Univers';
-            src: url('/static/fonts/univers-next-regular.woff2') format('woff2');
-            font-weight: normal;
-            font-style: normal;
-            font-display: swap;
-        }
 
         body {
             font-family: 'Ubuntu', sans-serif;
@@ -44,18 +35,7 @@
             font-family: 'Ubuntu Mono', monospace;
         }
 
-        .mono-heading {
-            font-family: 'Ubuntu Mono', monospace;
-            font-weight: 700;
-        }
-
-        /* h3 {
-            font-size: 1.3rem;
-            font-weight: 500;
-            color: #333;
-        } */
-
-        input, button {
+        form input, form button {
             font-size: 0.95rem;
             padding: 0.4rem 0.7rem;
         }
@@ -97,13 +77,13 @@
 <body class="mx-auto px-4 sm:px-6 lg:px-8 max-w-4xl flex flex-col min-h-screen bg-gray-50">
     <header class="bg-white rounded-md shadow-sm mb-4 mt-4">
         <div class="mx-auto max-w-screen-xl px-4 sm:px-6 lg:px-8">
-          <div class="flex h-14 items-center justify-between">
+          <div class="flex h-12 items-center justify-between">
             <div class="flex-1 md:flex md:items-center md:gap-12">
               <a class="block" href="/"> 
                 <span class="sr-only">Home</span>
                 <div class="flex items-center">
                     <img src="/static/img/sailboat.svg" alt="Blog Search logo" width="32"">
-                    <span class="ml-2 text-base font-medium text-teal-600">Blog Search</span>
+                    <span class="ml-2 text-base font-medium text-gray-600">Blog Search</span>
                 </div>
               </a>
             </div>
@@ -112,11 +92,11 @@
               <nav aria-label="Global" class="hidden md:block">
                 <ul class="flex items-center gap-6 text-sm">
                   <li>
-                    <a class="text-gray-600 transition hover:text-[#52718f]" href="/about"> About </a>
+                    <a class="text-gray-600 transition hover:text-[#52718f] hover:underline" href="/about"> About </a>
                   </li>
 
                   <li>
-                    <a class="text-gray-600 transition hover:text-[#52718f]" href="/api"> API </a>
+                    <a class="text-gray-600 transition hover:text-[#52718f] hover:underline" href="/api"> API </a>
                   </li>
                 </ul>
               </nav>
@@ -137,9 +117,8 @@
         <div class="flex justify-between items-center text-xs text-gray-500">
             <span>&copy; 2025 blogsearch.io</span>
             <div class="space-x-4">
-                <a href="/about" class="text-gray-600 hover:text-[#52718f] transition-colors">About</a>
-                <a href="/api" class="text-gray-600 hover:text-[#52718f] transition-colors">API</a>
-                <a href="#" class="text-gray-600 hover:text-[#52718f] transition-colors">Privacy</a>
+                <a href="#" class="text-gray-600 hover:text-[#52718f] hover:underline transition-colors">Status</a>
+                <a href="#" class="text-gray-600 hover:text-[#52718f] hover:underline transition-colors">Privacy</a>
             </div>
         </div>
     </footer>
