@@ -74,22 +74,22 @@
     {% block head_extra %}{% endblock %}
 </head>
 
-<body class="mx-auto px-4 sm:px-6 lg:px-8 max-w-4xl flex flex-col min-h-screen bg-gray-50">
-    <header class="bg-white rounded-md shadow-sm mb-4 mt-4">
-        <div class="mx-auto max-w-screen-xl px-4 sm:px-6 lg:px-8">
+<body class="mx-auto px-4 sm:px-6 lg:px-8 max-w-4xl flex flex-col min-h-screen bg-gray-200">
+    <header class="bg-white rounded-md shadow-md mb-4 mt-4">
+        <div class="mx-auto max-w-screen-xl px-3 sm:px-4 lg:px-5">
           <div class="flex h-12 items-center justify-between">
             <div class="flex-1 md:flex md:items-center md:gap-12">
               <a class="block" href="/"> 
                 <span class="sr-only">Home</span>
                 <div class="flex items-center">
                     <img src="/static/img/sailboat.svg" alt="Blog Search logo" width="32"">
-                    <span class="ml-2 text-base font-medium text-gray-600">Blog Search</span>
+                    <span class="ml-2 text-base font-medium text-gray-700">Blog Search</span>
                 </div>
               </a>
             </div>
 
             <div class="md:flex md:items-center md:gap-12">
-              <nav aria-label="Global" class="hidden md:block">
+              <nav aria-label="Global" class="block">
                 <ul class="flex items-center gap-6 text-sm">
                   <li>
                     <a class="text-gray-600 transition hover:text-[#52718f] hover:underline" href="/about"> About </a>
@@ -107,13 +107,13 @@
 
 
       <main class="flex-grow flex flex-col items-center"> 
-        <div class="w-full bg-white rounded-md shadow-sm p-4">
+        <div class="w-full bg-white rounded-md shadow-md p-4">
             {% block content %}
             {% endblock %}
         </div>
     </main>
 
-    <footer class="mt-6 mb-4 bg-white rounded-md shadow-sm p-3 text-center">
+    <footer class="mt-4 mb-4 bg-white rounded-md shadow-md p-3 text-center">
         <div class="flex justify-between items-center text-xs text-gray-500">
             <span>&copy; 2025 blogsearch.io</span>
             <div class="space-x-4">
