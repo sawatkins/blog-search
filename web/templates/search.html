@@ -2,6 +2,8 @@
 
 {% block title %}{{ query }} - Blog Search{% endblock %}
 
+{% block robots %}<meta name="robots" content="noindex, follow">{% endblock %}
+
 {% block content %}
     <form id="search-form" class="w-full mb-3" action="/search" method="get">
         <div class="relative flex justify-center w-full max-w-xl mx-auto">

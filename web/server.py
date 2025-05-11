@@ -81,8 +81,7 @@ async def api_search(q: str = Query(...)):
 
 @app.get("/robots.txt", response_class=PlainTextResponse)
 async def robots():
-    return """
-User-agent: *
+    return """User-agent: *
 Disallow: /search
 Disallow: /api/search
 """
