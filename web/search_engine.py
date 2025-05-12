@@ -84,15 +84,37 @@ class SearchEngine:
             
             with conn.cursor() as cursor:
                 sql = """
-                    SELECT title, url, date, LEFT(text, 300) as text,
-                        ts_rank_cd(page_tsv, phraseto_tsquery('english', %s)) as rank
+                    WITH search_query AS (
+                    SELECT websearch_to_tsquery('english', %s) as q
+                    ),
+
+                    hit_ids AS (
+                    SELECT pages.id
+                    FROM pages, search_query
+                    WHERE pages.page_tsv @@ search_query.q
+                    LIMIT 6000
+                    ),
+
+                    ranked AS (
+                    SELECT pages.id, ts_rank_cd(pages.page_tsv, search_query.q) AS score
                     FROM pages
-                    WHERE page_tsv @@ phraseto_tsquery('english', %s)
-                        AND ts_rank_cd(page_tsv, phraseto_tsquery('english', %s)) > 0.1
-                    ORDER BY rank DESC
-                    LIMIT 24
+                    JOIN hit_ids ON hit_ids.id = pages.id
+                    JOIN search_query ON TRUE 
+                    ORDER BY score DESC
+                    LIMIT 200
+                    )
+
+                    SELECT pages.title,
+                        pages.url,
+                        pages.date,
+                        LEFT(pages.text, 300) AS text,
+                        ranked.score
+                    FROM ranked
+                    JOIN pages on pages.id = ranked.id
+                    ORDER BY ranked.score DESC
+                    LIMIT 24;
                 """
-                cursor.execute(sql, (query_words, query_words, query_words))
+                cursor.execute(sql, (query_words,))
                 results = cursor.fetchall()
                 
                 return [
