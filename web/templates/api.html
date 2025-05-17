@@ -9,10 +9,10 @@
     <p class="mt-2 mb-4">Blog Search provides a simple API to access search results. Currently, there is not any authentication or rate limiting. If you are actually using this API, I would be love to hear from you. Please <a href="https://tally.so/r/mBe7We" target="_blank" class="text-[#bf616a] hover:underline visited:text-[#bf616a]">let me know</a>.</p>
     
     <h3 class="font-medium text-md mb-2">Search Endpoint</h3>
-    <pre class="bg-gray-100 p-2 rounded my-2 font-mono"><code>GET /api/search?q={query}</code></pre>
+    <pre class="code-block p-2 rounded my-2 font-mono"><code>GET /api/search?q={query}</code></pre>
     
     <p class="mb-2">Returns: JSON object with an array of search results, or an empty array if no results are found.</p>
-    <pre class="bg-gray-100 p-2 rounded my-4 font-mono"><code>{
+    <pre class="code-block p-2 rounded my-4 font-mono"><code>{
   "results": [
     {
       "url": "https://example.com/blog-post",
@@ -25,7 +25,7 @@
 }</code></pre>
 
     <h3 class="font-medium text-md mb-2">Example Usage</h3>
-    <pre class="bg-gray-100 p-2 rounded my-2 font-mono"><code style="white-space: pre-wrap;"># Python
+    <pre class="code-block p-2 rounded my-2 font-mono"><code style="white-space: pre-wrap;"># Python
 r = requests.get("https://blogsearch.io/api/search", params={"q": "your search query"})
 results = r.json()["results"]</code></pre>
 </div>

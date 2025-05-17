@@ -40,6 +40,7 @@
             --border: 229, 231, 235;
             --hover-bg: 243, 244, 246;
             --shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
+            --code-bg: 243, 244, 246;
         }
 
         .dark {
@@ -53,6 +54,7 @@
             --border: 51, 65, 85;
             --hover-bg: 42, 53, 71;
             --shadow: 0 1px 3px 0 rgb(0 0 0 / 0.4), 0 1px 2px -1px rgb(0 0 0 / 0.4);
+            --code-bg: 42, 53, 71;
         }
 
         body {
@@ -158,6 +160,11 @@
             animation: spin 0.35s ease-in-out infinite;
         }
 
+        .code-block {
+            background-color: rgb(var(--code-bg));
+            transition: background-color 0.2s ease;
+        }
+
         input, button {
             background-color: rgb(var(--bg-primary));
             color: rgb(var(--text-primary));
@@ -254,7 +261,7 @@
             <span>&copy; 2025 blogsearch.io</span>
             <div class="space-x-4">
                 <a href="#" class="text-gray-600 hover:text-[#52718f] hover:underline transition-colors duration-[0.05s]">Status</a>
-                <a href="#" class="text-gray-600 hover:text-[#52718f] hover:underline transition-colors duration-[0.05s]">Privacy</a>
+                <a href="/privacy" class="text-gray-600 hover:text-[#52718f] hover:underline transition-colors duration-[0.05s]">Privacy</a>
             </div>
         </div>
     </footer>
