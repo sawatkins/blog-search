@@ -12,15 +12,106 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Ubuntu:wght@300;400;500;700&display=swap" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Ubuntu+Mono:wght@400;700&display=swap" rel="stylesheet">
+    
+    <!-- Prevent flash of wrong theme -->
+    <script>
+        // Immediately set the theme based on user preference to prevent flash
+        let isDark = localStorage.getItem('dark-theme');
+        if (isDark === null) {
+            isDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+        } else {
+            isDark = isDark === 'true';
+        }
+        document.documentElement.classList.toggle('dark', isDark);
+    </script>
+    
     <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
     <script defer src="https://umami.sawatkins.com/umami" data-website-id="a2446000-b7cd-480a-a4e9-4d777b8294d4"></script>
 
     <style>
+        :root {
+            --bg-primary: 255, 255, 255;
+            --bg-secondary: 243, 244, 246;
+            --input-bg: 249, 250, 251;
+            --text-primary: 68, 68, 68;
+            --text-secondary: 107, 114, 128;
+            --accent: 82, 113, 143;
+            --accent-hover: 64, 92, 120;
+            --border: 229, 231, 235;
+            --hover-bg: 243, 244, 246;
+            --shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
+        }
+
+        .dark {
+            --bg-primary: 22, 31, 49;
+            --bg-secondary: 30, 41, 59;
+            --input-bg: 42, 53, 71;
+            --text-primary: 226, 232, 240;
+            --text-secondary: 148, 163, 184;
+            --accent: 82, 113, 143;
+            --accent-hover: 110, 138, 167;
+            --border: 51, 65, 85;
+            --hover-bg: 42, 53, 71;
+            --shadow: 0 1px 3px 0 rgb(0 0 0 / 0.4), 0 1px 2px -1px rgb(0 0 0 / 0.4);
+        }
+
         body {
             font-family: 'Ubuntu', sans-serif;
             font-size: 15px;
-            color: #444;
+            color: rgb(var(--text-primary));
             line-height: 1.45;
+            background-color: rgb(var(--bg-secondary));
+            transition: background-color 0.2s ease, color 0.2s ease;
+        }
+
+        .bg-white {
+            background-color: rgb(var(--bg-primary));
+            transition: background-color 0.2s ease;
+        }
+
+        .text-gray-700 {
+            color: rgb(var(--text-primary));
+            transition: color 0.2s ease;
+        }
+
+        .text-gray-600 {
+            color: rgb(var(--text-secondary));
+            transition: color 0.2s ease;
+        }
+
+        .text-gray-500 {
+            color: rgb(var(--text-secondary));
+            transition: color 0.2s ease;
+        }
+
+        .border-gray-200 {
+            border-color: rgb(var(--border));
+            transition: border-color 0.2s ease;
+        }
+
+        .shadow-md {
+            box-shadow: var(--shadow);
+            transition: box-shadow 0.2s ease;
+        }
+
+        .bg-\[\#52718f\] {
+            background-color: rgb(var(--accent));
+            transition: background-color 0.05s ease;
+        }
+
+        .hover\:bg-\[\#405c78\]:hover {
+            background-color: rgb(var(--accent-hover));
+            transition: background-color 0.05s ease;
+        }
+
+        .hover\:text-\[\#52718f\]:hover {
+            color: rgb(var(--accent));
+            transition: color 0.05s ease;
+        }
+
+        article.hover\:bg-gray-50:hover {
+            background-color: rgb(var(--hover-bg));
+            transition: background-color 0.05s ease;
         }
 
         code,
@@ -35,8 +126,14 @@
             padding: 0.4rem 0.7rem;
         }
 
+        input[type="text"] {
+            background-color: rgb(var(--input-bg));
+            color: rgb(var(--text-primary));
+            border-color: rgb(var(--border));
+        }
+
         details summary {
-            color: #52718f;
+            color: rgb(var(--accent));
             cursor: pointer;
         }
         .ascii-art {
@@ -55,10 +152,41 @@
             display: inline-block;
             width: 30px;
             height: 30px;
-            border: 3px solid rgba(0,0,0,0.1);
+            border: 3px solid rgba(var(--text-secondary), 0.1);
             border-radius: 50%;
-            border-top-color: #52718f;
+            border-top-color: rgb(var(--accent));
             animation: spin 0.35s ease-in-out infinite;
+        }
+
+        input, button {
+            background-color: rgb(var(--bg-primary));
+            color: rgb(var(--text-primary));
+            border-color: rgb(var(--border));
+            transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease;
+        }
+
+        /* Theme toggle icon */
+        .theme-toggle {
+            cursor: pointer;
+            width: 24px;
+            height: 24px;
+            padding: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 50%;
+            transition: all 0.05s ease;
+            color: rgb(var(--text-secondary));
+        }
+
+        .theme-toggle:hover {
+            color: rgb(var(--accent));
+            background-color: rgba(var(--text-secondary), 0.1);
+        }
+
+        .theme-toggle svg {
+            width: 18px;
+            height: 18px;
         }
 
         @keyframes spin {
@@ -69,7 +197,7 @@
     {% block head_extra %}{% endblock %}
 </head>
 
-<body class="mx-auto px-4 sm:px-6 lg:px-8 max-w-4xl flex flex-col min-h-screen bg-gray-200">
+<body class="mx-auto px-4 sm:px-6 lg:px-8 max-w-4xl flex flex-col min-h-screen">
     <header class="bg-white rounded-md shadow-md mb-4 mt-4">
         <div class="mx-auto max-w-screen-xl px-3 sm:px-4 lg:px-5">
           <div class="flex h-12 items-center justify-between">
@@ -87,11 +215,24 @@
               <nav aria-label="Global" class="block">
                 <ul class="flex items-center gap-6 text-sm">
                   <li>
-                    <a class="text-gray-600 transition hover:text-[#52718f] hover:underline" href="/about"> About </a>
+                    <a class="text-gray-600 transition-colors duration-[0.05s] hover:text-[#52718f] hover:underline" href="/about"> About </a>
                   </li>
 
                   <li>
-                    <a class="text-gray-600 transition hover:text-[#52718f] hover:underline" href="/api"> API </a>
+                    <a class="text-gray-600 transition-colors duration-[0.05s] hover:text-[#52718f] hover:underline" href="/api"> API </a>
+                  </li>
+                  
+                  <li>
+                    <button id="theme-toggle" class="theme-toggle" aria-label="Toggle dark mode">
+                      <!-- Sun icon -->
+                      <svg id="sun-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
+                      </svg>
+                      <!-- Moon icon -->
+                      <svg id="moon-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" class="hidden">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
+                      </svg>
+                    </button>
                   </li>
                 </ul>
               </nav>
@@ -112,11 +253,61 @@
         <div class="flex justify-between items-center text-xs text-gray-500">
             <span>&copy; 2025 blogsearch.io</span>
             <div class="space-x-4">
-                <a href="#" class="text-gray-600 hover:text-[#52718f] hover:underline transition-colors">Status</a>
-                <a href="#" class="text-gray-600 hover:text-[#52718f] hover:underline transition-colors">Privacy</a>
+                <a href="#" class="text-gray-600 hover:text-[#52718f] hover:underline transition-colors duration-[0.05s]">Status</a>
+                <a href="#" class="text-gray-600 hover:text-[#52718f] hover:underline transition-colors duration-[0.05s]">Privacy</a>
             </div>
         </div>
     </footer>
+
+    <script>
+        // Theme toggle functionality
+        const themeToggle = document.getElementById('theme-toggle');
+        const sunIcon = document.getElementById('sun-icon');
+        const moonIcon = document.getElementById('moon-icon');
+        const htmlElement = document.documentElement;
+        
+        // Function to set theme
+        function setTheme(isDark) {
+            if (isDark) {
+                htmlElement.classList.add('dark');
+                sunIcon.classList.add('hidden');
+                moonIcon.classList.remove('hidden');
+            } else {
+                htmlElement.classList.remove('dark');
+                sunIcon.classList.remove('hidden');
+                moonIcon.classList.add('hidden');
+            }
+            localStorage.setItem('dark-theme', isDark ? 'true' : 'false');
+        }
+        
+        // Check user preference
+        function getPreferredTheme() {
+            // Check localStorage first
+            const storedTheme = localStorage.getItem('dark-theme');
+            if (storedTheme !== null) {
+                return storedTheme === 'true';
+            }
+            
+            // If no stored preference, check system preference
+            return window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+        }
+        
+        // Initialize theme
+        setTheme(getPreferredTheme());
+        
+        // Listen for toggle changes
+        themeToggle.addEventListener('click', function() {
+            setTheme(!htmlElement.classList.contains('dark'));
+        });
+        
+        // Listen for system preference changes
+        window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', e => {
+            // Only change if user hasn't manually set a preference
+            if (localStorage.getItem('dark-theme') === null) {
+                setTheme(e.matches);
+            }
+        });
+    </script>
 
     {% block scripts %}
     {% endblock %}

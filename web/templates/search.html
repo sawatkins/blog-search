@@ -43,7 +43,7 @@
                             </h3>
                             <p class="text-xs text-gray-500 mb-1">
                                 {% if post.date %}<span class="font-mono mr-2">{{ post.date }}</span>{% endif %}
-                                <a href="{{ post.url|default('#') }}" target="_blank" class="hover:text-[#52718f] transition-colors">{{ post.url|default('No URL available') }}</a>
+                                <a href="{{ post.url|default('#') }}" target="_blank" class="">{{ post.url|default('No URL available') }}</a>
                             </p>
                             <p class="text-xs leading-relaxed text-gray-600">
                                 {{ post.text[:270] + '...' if post.text else 'No text available' }}
