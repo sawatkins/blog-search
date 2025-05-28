@@ -44,14 +44,25 @@ async def search_page(request: Request, background_tasks: BackgroundTasks, q: st
     results = []
     search_time = 0
 
-    if query:
-        background_tasks.add_task(
-            search_engine.log_query,
-            query=query,
-            ip_address=request.headers.get("X-Forwarded-For", request.client.host),
-            user_agent=request.headers.get("user-agent", "")
-        )
+    if not query:
+        return templates.TemplateResponse("index.html", {
+            "request": request,
+            "posts_size": search_engine.size
+        })
+
+    background_tasks.add_task(
+        search_engine.log_query,
+        query=query,
+        ip_address=request.headers.get("X-Forwarded-For", request.client.host),
+        user_agent=request.headers.get("user-agent", "")
+    )
         
+    use_meilisearch = request.query_params.get("use_meilisearch", "false").lower() == "true"
+    if use_meilisearch:
+        response = search_engine.search_meilisearch(query)
+        search_time = round(response.get('search_time', 0) / 1000, 2)
+        results = response.get('results', [])
+    else:
         start_time = time.time()
         results = search_engine.search(query)
         end_time = time.time()
@@ -61,7 +72,8 @@ async def search_page(request: Request, background_tasks: BackgroundTasks, q: st
         "request": request,
         "results": results,
         "query": query,
-        "time": search_time
+        "time": search_time,
+        "results_size": response.get('results_size', len(results))
     })
 
 @app.get("/api/search", response_class=JSONResponse)

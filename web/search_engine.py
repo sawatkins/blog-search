@@ -4,14 +4,18 @@ import os
 import sys
 from psycopg2 import Error
 from psycopg2 import pool
+from meilisearch import Client as MeiliSearch
 
 class SearchEngine:
-    def __init__(self):
+    def __init__(self, use_meilisearch: bool = False):
         load_dotenv()
         self.connection_pool = None
         self.init_pool()
         self.init_db()
         self.size = self.get_db_size()
+        self.meilisearch_client = None
+        if use_meilisearch:
+            self.init_meilisearch()
 
     def init_pool(self):
         try:
@@ -128,6 +132,33 @@ class SearchEngine:
                 ]
         finally:
             self.release_connection(conn)
+    
+    def init_meilisearch(self):
+        self.meilisearch_client = MeiliSearch(
+            url=os.getenv('MEILISEARCH_URL'),
+            api_key=os.getenv('MEILISEARCH_API_KEY')
+        )
+    
+    def search_meilisearch(self, query: str) -> list[dict]:
+        if self.meilisearch_client is None:
+            self.init_meilisearch()
+        query_words = self.clean_text(query)
+        if not query_words:
+            return []
+        results = self.meilisearch_client.index('pages').search(query_words, {'limit': 24})
+        return {
+            'results': [
+                {
+                    'title': result['title'] if 'title' in result else '',
+                    'url': result['url'],
+                    'date': result['date'] if 'date' in result else '',
+                    'text': ' '.join(result['text'].split(' ')[:300]) if 'text' in result else ''
+                }
+                for result in results['hits']
+            ],
+            'results_size': results.get('estimatedTotalHits', 0),
+            'search_time': results.get('processingTimeMs', 0)
+        }
 
     def log_query(self, query: str, ip_address: str, user_agent: str) -> None:
         conn = self.get_connection()
