@@ -57,16 +57,17 @@ async def search_page(request: Request, background_tasks: BackgroundTasks, q: st
         user_agent=request.headers.get("user-agent", "")
     )
         
-    use_meilisearch = request.query_params.get("use_meilisearch", "false").lower() == "true"
-    if use_meilisearch:
-        response = search_engine.search_meilisearch(query)
-        search_time = round(response.get('search_time', 0) / 1000, 2)
-        results = response.get('results', [])
-    else:
+    use_postgres = request.query_params.get("use_postgres", "false").lower() == "true"
+    if use_postgres:
         start_time = time.time()
         results = search_engine.search(query)
         end_time = time.time()
         search_time = round(end_time - start_time, 2)
+        response = {'results_size': len(results)}
+    else:
+        response = search_engine.search_meilisearch(query)
+        search_time = round(response.get('search_time', 0) / 1000, 2)
+        results = response.get('results', [])
     
     return templates.TemplateResponse("search.html", {
         "request": request,

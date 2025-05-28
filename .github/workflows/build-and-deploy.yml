@@ -44,5 +44,5 @@ jobs:
           username: ${{ secrets.SSH_USERNAME }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
-            kubectl rollout restart deployment/blogsearch-deployment
-            kubectl rollout status deployment/blogsearch-deployment
+            # kubectl rollout restart deployment/blogsearch-deployment
+            # kubectl rollout status deployment/blogsearch-deployment

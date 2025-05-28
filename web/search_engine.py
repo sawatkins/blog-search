@@ -7,7 +7,7 @@ from psycopg2 import pool
 from meilisearch import Client as MeiliSearch
 
 class SearchEngine:
-    def __init__(self, use_meilisearch: bool = False):
+    def __init__(self, use_meilisearch: bool = True):
         load_dotenv()
         self.connection_pool = None
         self.init_pool()
