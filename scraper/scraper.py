@@ -19,7 +19,7 @@ from psycopg2 import Error, pool
 
 from sqs_queue import SQSQueue
 
-MAX_WORKERS = 200
+MAX_WORKERS = 99
 
 def setup_logger():
     """Setup logging configuration with timestamped log file"""
@@ -52,9 +52,9 @@ class Scraper:
     def init_pool(self):
         try:
             self.connection_pool = pool.ThreadedConnectionPool(
-                minconn=50,  
-                maxconn=600, 
-                host=os.getenv('PGHOST'),
+                minconn=10,  
+                maxconn=80, 
+                host=os.getenv('PGHOST', 'localhost'),
                 database=os.getenv('PGDATABASE'),
                 user=os.getenv('PGUSER'),
                 password=os.getenv('PGPASSWORD'),
@@ -175,7 +175,8 @@ class Scraper:
             logger.error("Error parsing feed %s: %s", feed, e)
             return
 
-        new_urls = set()
+        # Collect candidate URLs first
+        candidate_urls = set()
         try:
             for entry in parsed_feed.entries:
                 if hasattr(entry, 'link'):
@@ -186,20 +187,48 @@ class Scraper:
                     if not self.is_blog_post_url(entry_link):
                         logger.debug("Skipping non-blog URL: %s", entry_link)
                         continue
-                    exists = self.url_exists_in_db(entry_link)
-                    if not exists:
-                        new_urls.add(entry_link)
-                    logger.debug("URL %s: %s", entry_link, 'exists' if exists else 'new')
+                    candidate_urls.add(entry_link)
         except Exception as e:
-            logger.error("Error processing feed %s: %s", feed, e)
+            logger.error("Error processing feed entries %s: %s", feed, e)
+            return
+            
+        if not candidate_urls:
+            logger.info("No valid URLs found for feed %s", feed)
+            self.mark_feed_as_checked(feed)
             return
 
-        logger.info("Found %d new URLs for feed %s", len(new_urls), feed)
+        # Check which URLs already exist in a single batch query
+        existing_urls = self.batch_check_urls_exist(candidate_urls)
+        new_urls = candidate_urls - existing_urls
+        
+        logger.info("Found %d new URLs out of %d for feed %s", len(new_urls), len(candidate_urls), feed)
         if new_urls:
             limited_urls = list(new_urls)[:100] # to avoid too large message size
             self.sqs_queue.send_message(limited_urls)
             logger.info("Sent %d new URLs to the queue", len(limited_urls))
-            self.mark_feed_as_checked(feed)
+        
+        self.mark_feed_as_checked(feed)
+    
+    def batch_check_urls_exist(self, urls: set) -> set:
+        """Check which URLs already exist in the database in a single batch query"""
+        if not urls:
+            return set()
+            
+        try:
+            with self.db_connection() as conn:
+                cursor = conn.cursor()
+                # Convert set to list for SQL
+                url_list = list(urls)
+                # Create placeholders for the SQL query
+                placeholders = ','.join(['%s'] * len(url_list))
+                query = f"SELECT url FROM pages WHERE url IN ({placeholders})"
+                cursor.execute(query, url_list)
+                existing_urls = {row[0] for row in cursor.fetchall()}
+                cursor.close()
+                return existing_urls
+        except (Exception, Error) as error:
+            logger.error("Error batch checking URLs: %s", error)
+            return set() # Assume all exist on error to avoid duplicates
     
     def is_blog_post_url(self, url: str) -> bool:
         """Basic check if a url follow known non-blog patterns"""
@@ -267,18 +296,21 @@ class Scraper:
             logger.info("Changed message visibility to %d seconds", visibility_timeout)
             task_timeout = int(visibility_timeout * 0.8)
             
-            urls_to_scrape = []
-            for url in urls:
-                if self.url_exists_in_db(url):
-                    logger.debug("URL already in database: %s", url)
-                else:
-                    urls_to_scrape.append(url)
+            # Filter URLs for validity first
+            valid_urls = [url for url in urls if self.is_url_valid(url) and self.is_blog_post_url(url)]
+            
+            # Check which URLs already exist in database in one batch query
+            existing_urls = self.batch_check_urls_exist(set(valid_urls))
+            urls_to_scrape = [url for url in valid_urls if url not in existing_urls]
+            
+            # Further filter by robots.txt
+            urls_to_scrape = [url for url in urls_to_scrape if self.robots_allows_scraping(url)]
 
             if len(urls_to_scrape) > 30: # remove this limit later
                 urls_to_scrape = urls_to_scrape[:30]
             
-            urls_to_scrape = [url for url in urls_to_scrape if self.is_url_valid(url)]
-            urls_to_scrape = [url for url in urls_to_scrape if self.robots_allows_scraping(url)]
+            logger.info("Processing %d new URLs sequentially from %d original URLs", 
+                       len(urls_to_scrape), len(urls))
             
             error_count = 0
             for url in urls_to_scrape:
@@ -286,7 +318,6 @@ class Scraper:
                     logger.error("Too many errors for %s, skipping remaining URLs", get_base_url(url))
                     break
                 try:
-                    logger.info("Processing %d new URLs sequentially", len(urls_to_scrape))
                     self.scrape_url(url) #add check_url(url)? 
                     if url != urls_to_scrape[-1]:
                         sleep(5) # basic rate limiting
@@ -305,7 +336,7 @@ class Scraper:
         timout = 6
         scrape_delay = 6
         processing_delay = 2
-        safety_margin = 1.5
+        safety_margin = 2.5
         return math.ceil(safety_margin * (num_urls * (timout + scrape_delay + processing_delay)))
     
     def url_exists_in_db(self, url: str) -> bool:
@@ -325,68 +356,30 @@ class Scraper:
         """Check if a url is valid"""
         return is_valid_url(url)
 
-    def get_robots_from_db(self, domain: str):
-        """Get robots.txt data from database cache"""
-        try:
-            with self.db_connection() as conn:
-                cursor = conn.cursor()
-                cursor.execute(
-                    "SELECT content FROM robots_cache WHERE domain = %s AND last_fetched > CURRENT_TIMESTAMP - INTERVAL '7 day'", 
-                    (domain,)
-                )
-                result = cursor.fetchone()
-                cursor.close()
-                if result:
-                    return result[0]
-                return None
-        except (Exception, Error) as error:
-            logger.error("Error retrieving robots data: %s", error)
-            return None
-            
-    def save_robots_to_db(self, domain: str, content: str):
-        """Save robots.txt data to database cache"""
-        try:
-            with self.db_connection() as conn:
-                cursor = conn.cursor()
-                cursor.execute(
-                    "INSERT INTO robots_cache (domain, content) VALUES (%s, %s) "
-                    "ON CONFLICT (domain) DO UPDATE SET content = %s, last_fetched = CURRENT_TIMESTAMP",
-                    (domain, content, content)
-                )
-                conn.commit()
-                cursor.close()
-        except (Exception, Error) as error:
-            logger.error("Error saving robots data: %s", error)
-
     def robots_allows_scraping(self, url: str) -> bool:
         """Check if robots.txt allows scraping for a given domain and url"""
-        base_url = clean_url(url)
+        base_url = get_base_url(url)
         
+        # Check in-memory cache first
         if base_url in self.robots_cache:
             return self.robots_cache[base_url].can_fetch("*", url)
         
-        robots_content = self.get_robots_from_db(base_url)
-        if robots_content:
-            rp = RobotFileParser()
-            from io import StringIO
-            rp.parse(StringIO(robots_content).readlines())
-            self.robots_cache[base_url] = rp
-            return rp.can_fetch("*", url)
-            
+        # Fetch robots.txt directly
         rp = RobotFileParser()
         robots_url = f"{base_url}/robots.txt"
         try:
             rp.set_url(robots_url)
             rp.read()
             self.robots_cache[base_url] = rp
-            
-            response = requests.get(robots_url, timeout=10)  
-            if response.status_code == 200:
-                self.save_robots_to_db(base_url, response.text)
-                
             return rp.can_fetch("*", url)
         except Exception as e:
-            logger.warning("Error fetching robots.txt for %s (continuing with scrape): %s", base_url, e)
+            logger.warning("Error fetching robots.txt for %s (allowing scrape): %s", base_url, e)
+            # Cache a permissive robots parser for failed fetches to avoid repeated requests
+            permissive_rp = RobotFileParser()
+            permissive_rp.set_url(robots_url)
+            # Empty robots.txt allows everything
+            permissive_rp.parse([])
+            self.robots_cache[base_url] = permissive_rp
             return True
 
     def scrape_url(self, url: str):
