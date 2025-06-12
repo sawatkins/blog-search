@@ -1,9 +1,11 @@
 # blog-search
-Blog Search is a search engine focused on indexing personal blog content. It can be used to find authentic, personal content from real people sharing their ideas and experiences 
+Blog Search is a search engine focused on indexing personal blog content. It can be used to find authentic, personal content from real people sharing their ideas and experiences.
 
-It is written in Python and uses PostgreSQL as the db and for full text search. The app is deployed as a single-node Kubernetes cluster using k3s. Monitoring and observability are handled through Prometheus/Grafana/Loki in the cluster. The scraper is multi-threaded with an AWS SQS queue.
+The web app is written in Python using FastAPI. It uses PostgreSQL as the database. I'm testing search results from both PostgreSQL's full text search and with Meilisearch. 
 
-The current list of blogs to index is compiled from Kagi's [smallweb project](https://github.com/kagisearch/smallweb). It is a personal project I started mainly to get better at SQL and learn Kubernetes. 
+The scraper is multi-threaded and uses an AWS SQS message queue. Both the web app and scraper are deployed on a Linux server with Docker Compose.
+
+The current list of blogs to index is compiled from Kagi's [smallweb project](https://github.com/kagisearch/smallweb). This is a personal project I started mainly to get better at SQL, web scraping, and message queues. 
 
 
 https://blogsearch.io
