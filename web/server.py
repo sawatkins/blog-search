@@ -79,25 +79,31 @@ async def search_page(request: Request, background_tasks: BackgroundTasks, q: st
 
 @app.get("/latest", response_class=HTMLResponse)
 async def latest(request: Request):
+    start_time = time.time()
     results = search_engine.get_latest_posts()
+    end_time = time.time()
+    search_time = round(end_time - start_time, 2)
     return templates.TemplateResponse("search.html", {
         "request": request,
         "results": results,
-        "query": "latest",
-        "time": 0,
+        "query": "",
+        "time": search_time,
         "results_size": len(results)
     })
 
-# @app.get("/random", response_class=HTMLResponse)
-# async def random(request: Request):
-#     results = search_engine.get_random_post()
-#     return templates.TemplateResponse("search.html", {
-#         "request": request,
-#         "results": results,
-#         "query": "",
-#         "time": 0,
-#         "results_size": len(results)
-#     })
+@app.get("/random", response_class=HTMLResponse)
+async def random(request: Request):
+    start_time = time.time()
+    result = search_engine.get_random_post()
+    end_time = time.time()
+    search_time = round(end_time - start_time, 2)
+    return templates.TemplateResponse("search.html", {
+        "request": request,
+        "results": [result],
+        "query": "",
+        "time": search_time,
+        "results_size": 1
+    })
 
 @app.get("/api/search", response_class=JSONResponse)
 async def api_search(q: str = Query(...)):
@@ -126,6 +132,7 @@ async def robots():
 Disallow: /search
 Disallow: /api/search
 Disallow: /latest
+Disallow: /random
 """
 
 @app.get("/favicon.ico")

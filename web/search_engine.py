@@ -177,6 +177,21 @@ class SearchEngine:
         finally:
             self.release_connection(conn)
 
+    def get_random_post(self) -> dict:
+        conn = self.get_connection()
+        try:
+            with conn.cursor() as cursor:
+                cursor.execute("SELECT title, url, date, text FROM pages ORDER BY RANDOM() LIMIT 1")
+                row = cursor.fetchone()
+                return {
+                    'title': row[0],
+                    'url': row[1].rstrip("/"),
+                    'date': row[2],
+                    'text': row[3]
+                } if row else None
+        finally:
+            self.release_connection(conn)
+
     def log_query(self, query: str, ip_address: str, user_agent: str) -> None:
         conn = self.get_connection()
         try:
@@ -202,7 +217,7 @@ if __name__ == "__main__":
             
             results = engine.search(query)
             print(f"\nFound {len(results)} results:")
-            for post in results[:5]:  # Display top 5 results
+            for post in results[:24]:  
                 print(f"Title: {post['title']}")
                 print(f"URL: {post['url']}")
                 print(f"Date: {post['date']}")

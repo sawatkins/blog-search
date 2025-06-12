@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}{{ query }} - Blog Search{% endblock %}
+{% block title %}{% if query %}{{ query }} - Blog Search{% else %}Blog Search{% endif %}{% endblock %}
 
 {% block robots %}<meta name="robots" content="noindex, follow">{% endblock %}
 
