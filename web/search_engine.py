@@ -159,6 +159,23 @@ class SearchEngine:
             'results_size': results.get('estimatedTotalHits', 0),
             'search_time': results.get('processingTimeMs', 0)
         }
+    
+    def get_latest_posts(self) -> list[dict]:
+        conn = self.get_connection()
+        try:
+            with conn.cursor() as cursor:
+                cursor.execute("SELECT title, url, date, text FROM pages WHERE date IS NOT NULL ORDER BY date DESC LIMIT 24")
+                return [
+                    {
+                        'title': row[0],
+                        'url': row[1].rstrip("/"),
+                        'date': row[2],
+                        'text': row[3]
+                    }
+                    for row in cursor.fetchall()
+                ]
+        finally:
+            self.release_connection(conn)
 
     def log_query(self, query: str, ip_address: str, user_agent: str) -> None:
         conn = self.get_connection()

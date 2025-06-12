@@ -77,6 +77,28 @@ async def search_page(request: Request, background_tasks: BackgroundTasks, q: st
         "results_size": response.get('results_size', len(results))
     })
 
+@app.get("/latest", response_class=HTMLResponse)
+async def latest(request: Request):
+    results = search_engine.get_latest_posts()
+    return templates.TemplateResponse("search.html", {
+        "request": request,
+        "results": results,
+        "query": "latest",
+        "time": 0,
+        "results_size": len(results)
+    })
+
+# @app.get("/random", response_class=HTMLResponse)
+# async def random(request: Request):
+#     results = search_engine.get_random_post()
+#     return templates.TemplateResponse("search.html", {
+#         "request": request,
+#         "results": results,
+#         "query": "",
+#         "time": 0,
+#         "results_size": len(results)
+#     })
+
 @app.get("/api/search", response_class=JSONResponse)
 async def api_search(q: str = Query(...)):
     query = q.strip() if q else None 
@@ -86,7 +108,7 @@ async def api_search(q: str = Query(...)):
     try:
         results = search_engine.search(query)
         api_results = []
-        for result in results[:5]:  # Limit to 5 results
+        for result in results[:24]:
             api_results.append({
                 "url": result['url'] if 'url' in result else '',
                 "title": result['title'] if 'title' in result else '',
@@ -103,6 +125,7 @@ async def robots():
     return """User-agent: *
 Disallow: /search
 Disallow: /api/search
+Disallow: /latest
 """
 
 @app.get("/favicon.ico")
