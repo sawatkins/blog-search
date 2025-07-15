@@ -44,7 +44,7 @@ jobs:
           username: ${{ secrets.SSH_USERNAME }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
-            cd /srv/blogsearch && git pull && docker compose -f compose.prod.yml pull && docker compose -f compose.prod.yml up -d
+            cd /srv/blog-search && git pull && docker compose -f compose.prod.yml pull && docker compose -f compose.prod.yml up -d
 
   # deploy:
   #   name: Deploy to Kubernetes
