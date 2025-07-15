@@ -17,5 +17,6 @@ config.yaml
 *Zone.Identifier
 *.log
 archive/*
-/meili_data/*
+.meili_data/*
 compose.yml
+dev.sh

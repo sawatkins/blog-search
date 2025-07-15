@@ -1,19 +1,19 @@
 services:
-  meili:
+  meili-dev:
     image: getmeili/meilisearch:v1.14
     container_name: meili-dev
     env_file: .env
     volumes:
-      - ./meili_data:/meili_data
-    ports: ["0.0.0.0:7800:7700"]
+      - ./.meili_data:/meili_data
+    ports: ["0.0.0.0:8001:7700"]
 
-  blogsearch:
+  blogsearch-dev:
     build: .
-    depends_on: [meili]
+    depends_on: [meili-dev]
     container_name: blogsearch-dev
     env_file: .env
     volumes:
       - .:/app
       - ./web:/app/web
-    ports: ["0.0.0.0:7801:8000"]
+    ports: ["0.0.0.0:8000:8000"]
 
