@@ -1,0 +1,17 @@
+services:
+  meili:
+    image: getmeili/meilisearch:v1.14
+    container_name: meili-prod
+    restart: unless-stopped
+    env_file: .env.prod
+    volumes:
+      - /srv/meili_data:/meili_data
+    ports: ["0.0.0.0:7700:7700"]
+
+  blogsearch:
+    image: ghcr.io/sawatkins/blog-search/blogsearch:latest
+    depends_on: [meili]
+    container_name: blogsearch-prod
+    restart: unless-stopped
+    env_file: .env.prod
+    ports: ["0.0.0.0:7701:8000"]
