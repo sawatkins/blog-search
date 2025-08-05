@@ -139,9 +139,9 @@ class Scraper:
         try:
             for entry in parsed_feed.entries:
                 if hasattr(entry, 'link'):
-                    entry_link = entry.link.strip().rstrip('/')
-                    if not self.is_url_valid(entry_link):
-                        logger.debug("Skipping invalid URL: %s", entry_link)
+                    entry_link = clean_url(entry.link)  # Normalize URL
+                    if not entry_link or not self.is_url_valid(entry_link):
+                        logger.debug("Skipping invalid URL: %s", entry.link)
                         continue
                     if not self.is_blog_post_url(entry_link):
                         logger.debug("Skipping non-blog URL: %s", entry_link)
@@ -361,9 +361,14 @@ class Scraper:
             logger.warning("Extracted text for %s is too short", url)
             return
         
+        # Use the final URL from trafilatura if available (handles redirects)
+        final_url = extracted_dict.get('url', url)
+        if final_url != url:
+            logger.info("URL redirected from %s to %s", url, final_url)
+        
         page = {
             'title': extracted_dict['title'],
-            'url': url,
+            'url': clean_url(final_url),  # Normalize the final URL
             'fingerprint': extracted_dict['fingerprint'],
             'date': extracted_dict['date'],
             'text': extracted_dict['raw_text']
@@ -376,11 +381,29 @@ class Scraper:
         try:
             with self.db_connection() as conn:
                 cursor = conn.cursor()
-                cursor.execute("INSERT INTO pages (title, url, fingerprint, date, text) VALUES (%s, %s, %s, %s, %s)", 
-                              (page['title'], page['url'], page['fingerprint'], page['date'], page['text']))
+                # Use ON CONFLICT to handle duplicate URLs gracefully
+                cursor.execute("""
+                    INSERT INTO pages (title, url, fingerprint, date, text) 
+                    VALUES (%s, %s, %s, %s, %s)
+                    ON CONFLICT (url) DO UPDATE SET
+                        title = EXCLUDED.title,
+                        fingerprint = EXCLUDED.fingerprint,
+                        date = EXCLUDED.date,
+                        text = EXCLUDED.text,
+                        scraped_on_date = CURRENT_TIMESTAMP
+                """, (page['title'], page['url'], page['fingerprint'], page['date'], page['text']))
+                
+                if cursor.rowcount == 0:
+                    logger.info("Page already exists with same fingerprint, skipping: %s", page['url'])
+                else:
+                    logger.info("Successfully saved/updated page: %s", page['url'])
                 conn.commit()
-        except (Exception, Error) as error:
-            logger.error("Error saving page: %s", error)
+        except Error as error:
+            # Check if it's a fingerprint duplicate error
+            if 'fingerprint' in str(error) and 'duplicate' in str(error).lower():
+                logger.info("Page already exists with same fingerprint, skipping: %s", page['url'])
+            else:
+                logger.error("Error saving page %s: %s", page['url'], error)
 
     def tmp(self):
         pass
