@@ -46,7 +46,6 @@ class Scraper:
         self.init_pool()
         self.init_db()        
         self.sqs_queue = SQSQueue()
-        self.robots_cache = {}
 
     def init_pool(self):
         try:
@@ -94,31 +93,6 @@ class Scraper:
             logger.error("Error while initializing database: %s", error)
             sys.exit(1)
     
-    def update_feeds_list(self):
-        """Update list of rss feeds, currently only from smallweb project"""
-        smallweb_feeds = self.get_smallweb_feeds()
-
-        try:
-            with self.db_connection() as conn:
-                cursor = conn.cursor()
-                cursor.execute("SELECT feed_url FROM feeds")
-                existing_feeds = {row[0] for row in cursor.fetchall()}        
-                new_feeds = [feed.strip() for feed in smallweb_feeds if feed not in existing_feeds]
-
-                logger.info("Found %d existing feeds", len(existing_feeds))
-                logger.info("Found %d new feeds", len(new_feeds))
-                
-                if new_feeds:
-                    insert_query = "INSERT INTO feeds (feed_url) VALUES (%s) ON CONFLICT DO NOTHING"
-                    cursor.executemany(insert_query, [(feed,) for feed in new_feeds])
-                    conn.commit()
-                    logger.info("Added %d new feeds to the database", len(new_feeds))
-                else:
-                    logger.info("No new feeds to add")
-                
-                cursor.close()
-        except Exception as e:
-            logger.error("Error updating feeds list: %s", e)
 
     def get_smallweb_feeds(self) -> set[str]:
         """Get list of rss feeds from smallweb project"""
@@ -133,9 +107,9 @@ class Scraper:
             logger.error("Error downloading feeds file: %s", e)
             return set()
     
-    def enqueue_new_feed_entries(self, max_workers: int = MAX_WORKERS, only_due_for_update: bool = False):
-        feeds = self.get_all_feeds_from_db(only_due_for_update=only_due_for_update) #True in prod
-        #feeds = feeds[6000:6005] # subset of feeds for testing
+    def enqueue_new_feed_entries(self, max_workers: int = MAX_WORKERS):
+        feeds = self.get_smallweb_feeds()
+        #feeds = list(feeds)[6000:6005] # subset of feeds for testing
         
         logger.info("\nProcessing %d feeds with %d worker threads\n", len(feeds), max_workers)
         
@@ -144,20 +118,6 @@ class Scraper:
             
         logger.info("All feeds processed")
     
-    def get_all_feeds_from_db(self, only_due_for_update: bool = False):
-        """Get list of all rss feeds from database"""
-        try:
-            with self.db_connection() as conn:
-                cursor = conn.cursor()
-                if only_due_for_update:
-                    cursor.execute("SELECT feed_url FROM feeds WHERE last_check_date < CURRENT_DATE - INTERVAL '1 day' OR last_check_date IS NULL")
-                else:
-                    cursor.execute("SELECT feed_url FROM feeds")
-                feeds = {row[0] for row in cursor.fetchall()}
-                return feeds
-        except (Exception, Error) as error:
-            logger.error("Error getting all feeds: %s", error)
-            return set()
 
     def process_feed(self, feed):
         """Process a single feed, extract new urls and enqueue them"""
@@ -193,7 +153,7 @@ class Scraper:
             
         if not candidate_urls:
             logger.info("No valid URLs found for feed %s", feed)
-            self.mark_feed_as_checked(feed)
+            # No longer tracking feed check dates since we use smallweb.txt directly
             return
 
         # Check which URLs already exist in a single batch query
@@ -206,7 +166,7 @@ class Scraper:
             self.sqs_queue.send_message(limited_urls)
             logger.info("Sent %d new URLs to the queue", len(limited_urls))
         
-        self.mark_feed_as_checked(feed)
+        # No longer tracking feed check dates since we use smallweb.txt directly
     
     def batch_check_urls_exist(self, urls: set) -> set:
         """Check which URLs already exist in the database in a single batch query"""
@@ -243,14 +203,6 @@ class Scraper:
         
         return True
     
-    def mark_feed_as_checked(self, feed_url: str):
-        try:
-            with self.db_connection() as conn:
-                cursor = conn.cursor()
-                cursor.execute("UPDATE feeds SET last_check_date = CURRENT_DATE WHERE feed_url = %s", (feed_url,))
-                conn.commit()
-        except (Exception, Error) as error:
-            logger.error("Error marking feed as checked: %s", error)
 
     def scrape(self, max_workers: int = MAX_WORKERS):
         """Scrape all urls from the queue and save them to the database, multithreaded"""
@@ -302,8 +254,13 @@ class Scraper:
             existing_urls = self.batch_check_urls_exist(set(valid_urls))
             urls_to_scrape = [url for url in valid_urls if url not in existing_urls]
             
-            # Further filter by robots.txt
-            urls_to_scrape = [url for url in urls_to_scrape if self.robots_allows_scraping(url)]
+            # Check robots.txt once for this domain (since all URLs in message are same domain)
+            robot_parser = None
+            if urls_to_scrape:
+                domain_url = get_base_url(urls_to_scrape[0])
+                robot_parser = self.check_robots_for_domain(domain_url)
+                # Filter URLs by robots.txt rules
+                urls_to_scrape = [url for url in urls_to_scrape if self.robots_allows_scraping(robot_parser, url)]
 
             if len(urls_to_scrape) > 30: # remove this limit later
                 urls_to_scrape = urls_to_scrape[:30]
@@ -355,31 +312,27 @@ class Scraper:
         """Check if a url is valid"""
         return is_valid_url(url)
 
-    def robots_allows_scraping(self, url: str) -> bool:
-        """Check if robots.txt allows scraping for a given domain and url"""
-        base_url = get_base_url(url)
-        
-        # Check in-memory cache first
-        if base_url in self.robots_cache:
-            return self.robots_cache[base_url].can_fetch("*", url)
-        
-        # Fetch robots.txt directly
+    def check_robots_for_domain(self, domain_url: str) -> RobotFileParser:
+        """Check robots.txt for a domain once per message processing"""
         rp = RobotFileParser()
-        robots_url = f"{base_url}/robots.txt"
+        robots_url = f"{domain_url}/robots.txt"
         try:
             rp.set_url(robots_url)
             rp.read()
-            self.robots_cache[base_url] = rp
-            return rp.can_fetch("*", url)
+            logger.info("Loaded robots.txt for %s", domain_url)
+            return rp
         except Exception as e:
-            logger.warning("Error fetching robots.txt for %s (allowing scrape): %s", base_url, e)
-            # Cache a permissive robots parser for failed fetches to avoid repeated requests
+            logger.warning("Error fetching robots.txt for %s (allowing all): %s", domain_url, e)
+            # Create permissive robots parser for failed fetches
             permissive_rp = RobotFileParser()
             permissive_rp.set_url(robots_url)
             # Empty robots.txt allows everything
             permissive_rp.parse([])
-            self.robots_cache[base_url] = permissive_rp
-            return True
+            return permissive_rp
+    
+    def robots_allows_scraping(self, robot_parser: RobotFileParser, url: str) -> bool:
+        """Check if robots.txt allows scraping for a specific URL"""
+        return robot_parser.can_fetch("*", url)
 
     def scrape_url(self, url: str):
         """Scrape a single url, save it to the database if it's a blog post"""
@@ -453,21 +406,18 @@ if __name__ == "__main__":
     
     if len(sys.argv) > 1:
         command = sys.argv[1]
-        if command == "update_feeds":
-            logger.info("UPDATING FEEDS LIST")
-            scraper.update_feeds_list()
-        elif command == "enqueue":
+        if command == "enqueue":
             logger.info("ENQUEUE")
             scraper.enqueue_new_feed_entries()
-        elif command == "scrape":
-            logger.info("SCRAPING")
+        elif command == "process":
+            logger.info("PROCESSING")
             scraper.scrape()
         elif command == "tmp":
             scraper.tmp()
         else:
             logger.error("Unknown command: %s", command)
-            logger.info("Available commands: update_feeds, enqueue, scrape, tmp")
+            logger.info("Available commands: enqueue, process, tmp")
     else:
-        logger.info("Available commands: update_feeds, enqueue, scrape, tmp")
+        logger.info("Available commands: enqueue, process, tmp")
 
 
