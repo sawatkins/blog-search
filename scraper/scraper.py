@@ -111,6 +111,10 @@ class Scraper:
             return set()
     
     def enqueue_new_feed_entries(self, max_workers: int = MAX_WORKERS):
+        # Clear any existing messages from previous runs
+        logger.info("Clearing SQS queue before enqueuing new feeds")
+        self.sqs_queue.purge_queue()
+        
         feeds = self.get_smallweb_feeds()
         #feeds = list(feeds)[6000:6005] # subset of feeds for testing
         
@@ -250,8 +254,12 @@ class Scraper:
             logger.info("Changed message visibility to %d seconds", visibility_timeout)
             task_timeout = int(visibility_timeout * 0.8)
             
-            # Filter URLs for validity first
-            valid_urls = [url for url in urls if self.is_url_valid(url) and self.is_blog_post_url(url)]
+            # Normalize and filter URLs for validity first
+            valid_urls = []
+            for url in urls:
+                normalized_url = clean_url(url)
+                if normalized_url and self.is_url_valid(normalized_url) and self.is_blog_post_url(normalized_url):
+                    valid_urls.append(normalized_url)
             
             # Check which URLs already exist in database in one batch query
             existing_urls = self.batch_check_urls_exist(set(valid_urls))
@@ -292,11 +300,8 @@ class Scraper:
 
     def calculate_visibility_timeout(self, num_urls: int) -> int:
         """Calculate visibility timeout for a message based on the number of urls"""
-        timout = 6
-        scrape_delay = 6
-        processing_delay = 2
-        safety_margin = 2.5
-        return math.ceil(safety_margin * (num_urls * (timout + scrape_delay + processing_delay)))
+        # 10s timeout + 5s sleep + 5s processing buffer = 20s per URL, plus 60s safety margin
+        return max(300, num_urls * 20 + 60)  # minimum 5 minutes, max based on URL count
     
     def url_exists_in_db(self, url: str) -> bool:
         """Check if a url already exists in the database"""
