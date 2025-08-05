@@ -5,7 +5,7 @@ services:
     env_file: .env
     volumes:
       - ./.meili_data:/meili_data
-    ports: ["0.0.0.0:8001:7700"]
+    ports: ["100.110.79.69:8001:7700"]
 
   blogsearch-dev:
     build: .
@@ -15,5 +15,5 @@ services:
     volumes:
       - .:/app
       - ./web:/app/web
-    ports: ["0.0.0.0:8000:8000"]
+    ports: ["100.110.79.69:8000:8000"]
 

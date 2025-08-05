@@ -39,6 +39,9 @@ def setup_logger():
 
 logger = setup_logger()
 
+# Suppress trafilatura's verbose logging
+logging.getLogger('trafilatura').setLevel(logging.WARNING)
+
 class Scraper:
     def __init__(self):
         load_dotenv()
@@ -339,7 +342,15 @@ class Scraper:
         logger.info("Scraping URL: %s", url)
 
         try:
-            downloaded_content = trafilatura.fetch_url(url)
+            downloaded_content = trafilatura.fetch_url(
+                url, 
+                config=trafilatura.settings.use_config({
+                    'DEFAULT': {
+                        'USER_AGENT': 'BlogSearchBot/1.0 (+https://blogsearch.io/bot)',
+                        'TIMEOUT': '10'
+                    }
+                })
+            )
         except Exception as e:
             logger.error("Error downloading content for %s: %s", url, e)
             return
