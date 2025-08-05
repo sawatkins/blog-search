@@ -19,7 +19,7 @@ from psycopg2 import Error, pool
 
 from sqs_queue import SQSQueue
 
-MAX_WORKERS = 99
+MAX_WORKERS = 75
 
 def setup_logger():
     logs_dir = os.path.join(os.path.dirname(__file__), 'logs')
@@ -280,17 +280,25 @@ class Scraper:
                        len(urls_to_scrape), len(urls))
             
             error_count = 0
+            consecutive_errors = 0
+            sleep_time = 5
+            
             for url in urls_to_scrape:
-                if error_count > 3:
-                    logger.error("Too many errors for %s, skipping remaining URLs", get_base_url(url))
+                if consecutive_errors >= 5:
+                    logger.error("Too many consecutive errors for %s, backing off", get_base_url(url))
                     break
+                    
                 try:
-                    self.scrape_url(url) #add check_url(url)? 
+                    self.scrape_url(url)
+                    consecutive_errors = 0  # Reset on success
                     if url != urls_to_scrape[-1]:
-                        sleep(5) # basic rate limiting
+                        sleep(sleep_time)
                 except Exception as e:
-                    logger.error("Error scraping URL %s: %s", url, e)
                     error_count += 1
+                    consecutive_errors += 1
+                    sleep_time = min(sleep_time * 1.5, 30)  # Exponential backoff, max 30s
+                    logger.error("Error scraping %s (consecutive: %d): %s", url, consecutive_errors, e)
+                    sleep(min(sleep_time, 10))  # Sleep on error, but cap at 10s
 
             self.sqs_queue.delete_message(receipt_handle)
             logger.info("Deleted message after processing all URLs")
