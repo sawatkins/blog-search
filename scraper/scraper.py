@@ -16,10 +16,11 @@ import trafilatura
 from courlan import clean_url, get_base_url, is_valid_url
 from dotenv import load_dotenv
 from psycopg2 import Error, pool
+from meilisearch import Client as MeiliSearch
 
 from sqs_queue import SQSQueue
 
-MAX_WORKERS = 75
+MAX_WORKERS = 23
 
 def setup_logger():
     logs_dir = os.path.join(os.path.dirname(__file__), 'logs')
@@ -49,17 +50,19 @@ class Scraper:
         self.init_pool()
         self.init_db()        
         self.sqs_queue = SQSQueue()
+        self.meilisearch_client = None
+        self.init_meilisearch()
 
     def init_pool(self):
         try:
             self.connection_pool = pool.ThreadedConnectionPool(
-                minconn=10,  
-                maxconn=80, 
-                host=os.getenv('PGHOST', 'localhost'),
+                minconn=5,  
+                maxconn=24, 
+                host=os.getenv('PGHOST'),
                 database=os.getenv('PGDATABASE'),
                 user=os.getenv('PGUSER'),
                 password=os.getenv('PGPASSWORD'),
-                port="5432"
+                port=os.getenv('PGPORT')
             )
             conn = self.connection_pool.getconn()
             self.connection_pool.putconn(conn)
@@ -82,6 +85,20 @@ class Scraper:
 
     def __del__(self):
         self.close_pool()
+
+    def init_meilisearch(self):
+        """Initialize Meilisearch client with error handling"""
+        try:
+            self.meilisearch_client = MeiliSearch(
+                url=os.getenv('MEILISEARCH_URL'),
+                api_key=os.getenv('MEILISEARCH_API_KEY')
+            )
+            # Test connection
+            self.meilisearch_client.health()
+            logger.info("Connected to Meilisearch at %s", os.getenv('MEILISEARCH_URL'))
+        except Exception as e:
+            logger.warning("Could not connect to Meilisearch (will skip indexing): %s", e)
+            self.meilisearch_client = None
     
     def init_db(self):
         try:
@@ -355,15 +372,14 @@ class Scraper:
         logger.info("Scraping URL: %s", url)
 
         try:
-            downloaded_content = trafilatura.fetch_url(
-                url, 
-                config=trafilatura.settings.use_config({
-                    'DEFAULT': {
-                        'USER_AGENT': 'BlogSearchBot/1.0 (+https://blogsearch.io/bot)',
-                        'TIMEOUT': '10'
-                    }
-                })
-            )
+            config = trafilatura.settings.use_config()
+            try:
+                config.set('DEFAULT', 'USER_AGENT', 'BlogSearchBot/1.0 (+https://blogsearch.io/bot)')
+                config.set('DEFAULT', 'DOWNLOAD_TIMEOUT', '10')
+            except Exception:
+                pass
+
+            downloaded_content = trafilatura.fetch_url(url, config=config)
         except Exception as e:
             logger.error("Error downloading content for %s: %s", url, e)
             return
@@ -401,7 +417,8 @@ class Scraper:
         logger.info("Successfully processed and saved page: %s", url)
     
     def save_page(self, page: dict):
-        """Save a page to the database"""
+        """Save a page to the database and index in Meilisearch"""
+        db_saved = False
         try:
             with self.db_connection() as conn:
                 cursor = conn.cursor()
@@ -409,25 +426,58 @@ class Scraper:
                 cursor.execute("""
                     INSERT INTO pages (title, url, fingerprint, date, text) 
                     VALUES (%s, %s, %s, %s, %s)
-                    ON CONFLICT (url) DO UPDATE SET
-                        title = EXCLUDED.title,
-                        fingerprint = EXCLUDED.fingerprint,
-                        date = EXCLUDED.date,
-                        text = EXCLUDED.text,
-                        scraped_on_date = CURRENT_TIMESTAMP
+                    ON CONFLICT (url) DO UPDATE
+                        SET title = EXCLUDED.title,
+                            fingerprint = EXCLUDED.fingerprint,
+                            date = EXCLUDED.date,
+                            text = EXCLUDED.text,
+                            scraped_on_date = CURRENT_TIMESTAMP
+                    RETURNING id
                 """, (page['title'], page['url'], page['fingerprint'], page['date'], page['text']))
                 
-                if cursor.rowcount == 0:
-                    logger.info("Page already exists with same fingerprint, skipping: %s", page['url'])
-                else:
+                result = cursor.fetchone()
+                if result:
+                    page_id = result[0]
+                    db_saved = True
                     logger.info("Successfully saved/updated page: %s", page['url'])
+                else:
+                    logger.info("Page already exists with same fingerprint, skipping: %s", page['url'])
                 conn.commit()
+                
+                # Add to Meilisearch if DB save was successful and client is available
+                if db_saved and self.meilisearch_client:
+                    self.index_page_in_meilisearch(page, page_id)
+                    
         except Error as error:
             # Check if it's a fingerprint duplicate error
             if 'fingerprint' in str(error) and 'duplicate' in str(error).lower():
                 logger.info("Page already exists with same fingerprint, skipping: %s", page['url'])
             else:
                 logger.error("Error saving page %s: %s", page['url'], error)
+
+    def index_page_in_meilisearch(self, page: dict, page_id: int):
+        """Index a page in Meilisearch with error handling"""
+        if not self.meilisearch_client:
+            return
+            
+        try:
+            # Prepare document for Meilisearch
+            document = {
+                'id': str(page_id),  # Meilisearch needs string IDs
+                'title': page['title'] or '',
+                'url': page['url'] or '',
+                'date': page['date'].isoformat() if page['date'] else None,
+                'text': page['text'] or ''
+            }
+            
+            # Add document to Meilisearch
+            index = self.meilisearch_client.index('pages')
+            task = index.add_documents([document])
+            logger.debug("Added page to Meilisearch search index: %s (task: %s)", page['url'], task.task_uid)
+            
+        except Exception as e:
+            logger.warning("Failed to index page in Meilisearch %s: %s", page['url'], e)
+            # Continue execution - don't fail the scrape if Meilisearch fails
 
     def tmp(self):
         pass
@@ -459,12 +509,17 @@ if __name__ == "__main__":
         elif command == "process":
             logger.info("PROCESSING")
             scraper.scrape()
+        elif command == "run":
+            logger.info("RUN (ENQUEUE + PROCESS)")
+            scraper.enqueue_new_feed_entries()
+            logger.info("Enqueue complete, starting processing...")
+            scraper.scrape()
         elif command == "tmp":
             scraper.tmp()
         else:
             logger.error("Unknown command: %s", command)
-            logger.info("Available commands: enqueue, process, tmp")
+            logger.info("Available commands: enqueue, process, run, tmp")
     else:
-        logger.info("Available commands: enqueue, process, tmp")
+        logger.info("Available commands: enqueue, process, run, tmp")
 
 
