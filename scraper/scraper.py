@@ -440,8 +440,6 @@ class Scraper:
                     page_id = result[0]
                     db_saved = True
                     logger.info("Successfully saved/updated page: %s", page['url'])
-                else:
-                    logger.info("Page already exists with same fingerprint, skipping: %s", page['url'])
                 conn.commit()
                 
                 # Add to Meilisearch if DB save was successful and client is available
@@ -451,7 +449,7 @@ class Scraper:
         except Error as error:
             # Check if it's a fingerprint duplicate error
             if 'fingerprint' in str(error) and 'duplicate' in str(error).lower():
-                logger.info("Page already exists with same fingerprint, skipping: %s", page['url'])
+                logger.info("Page with identical fingerprint already exists; skipping URL: %s", page['url'])
             else:
                 logger.error("Error saving page %s: %s", page['url'], error)
 
@@ -461,12 +459,11 @@ class Scraper:
             return
             
         try:
-            # Prepare document for Meilisearch
             document = {
-                'id': str(page_id),  # Meilisearch needs string IDs
+                'id': str(page_id),  
                 'title': page['title'] or '',
                 'url': page['url'] or '',
-                'date': page['date'].isoformat() if page['date'] else None,
+                'date': page.get('date') or None,
                 'text': page['text'] or ''
             }
             
