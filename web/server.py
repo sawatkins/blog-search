@@ -38,6 +38,12 @@ async def about(request: Request):
         "request": request,
     })
 
+@app.get("/bot", response_class=HTMLResponse)
+async def bot(request: Request):
+    return templates.TemplateResponse("bot.html", {
+        "request": request,
+    })
+
 @app.get("/search", response_class=HTMLResponse)
 async def search_page(request: Request, background_tasks: BackgroundTasks, q: str = Query(None)):
     query = q.strip() if q else ""

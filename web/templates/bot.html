@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+
+{% block title %}Bot - Blog Search{% endblock %}
+
+{% block content %}
+<div class="w-full">
+    <h3 class="text-lg font-medium mb-4">Blog Search Bot</h3>
+        
+    <div class="space-y-3 text-sm">
+        <h3 class="font-medium text-md mb-1">What is BlogSearchBot?</h3>
+        <p>BlogSearchBot is the web scraper for this search engine. Urls to scrape are added from the blog's rss feed. It runs once a day and respects robots.txt.</p>
+        
+        <h3 class="font-medium text-md mb-1">Contact</h3>
+        <p>If you thing the bot is misbehaving or have other comments, contact me at <a href="mailto:admin@blogsearch.io" class="text-[#bf616a] hover:underline visited:text-[#bf616a]">admin@blogsearch.io</a>.</p>
+        
+    </div>
+</div>
+{% endblock %} 
