@@ -10,6 +10,11 @@ CREATE TABLE IF NOT EXISTS pages (
     scraped_on_date TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Ensure unique indexes exist even if the table predated UNIQUE constraints
+-- This allows INSERT ... ON CONFLICT (url) to work on older databases
+CREATE UNIQUE INDEX IF NOT EXISTS idx_pages_url_unique ON pages (url);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_pages_fingerprint_unique ON pages (fingerprint);
+
 -- Table for tracking RSS feeds
 CREATE TABLE IF NOT EXISTS feeds (
     feed_url TEXT PRIMARY KEY,
