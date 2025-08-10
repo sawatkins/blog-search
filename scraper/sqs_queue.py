@@ -1,3 +1,4 @@
+import sys
 from time import sleep
 import boto3
 import os
@@ -89,12 +90,35 @@ class SQSQueue:
             return True
         except Exception as e:
             print(f"Error purging queue: {str(e)}")
-            return False
+            return 
+    
+    def get_number_of_messages(self):
+        try:
+            response = self.sqs_client.get_queue_attributes(
+                QueueUrl=self.queue_url,
+                AttributeNames=['ApproximateNumberOfMessages']
+            )
+            return int(response['Attributes']['ApproximateNumberOfMessages'])
+        except Exception as e:
+            print(f"Error getting number of messages: {str(e)}")
+            return 0
 
 if __name__ == "__main__":
     load_dotenv()
     q = SQSQueue()
-    q.purge_queue()
+    
+    if len(sys.argv) > 1:
+        command = sys.argv[1]
+        if command == "purge":
+            q.purge_queue()
+        elif command == "num_messages":
+            print(q.get_number_of_messages())
+        else:
+            print("Unknown command")
+    else:
+        print("Available commands: purge, num_messages")
+
+    #q.purge_queue()
     # q.send_message(["https://www.google.com"])
     # message = q.receive_message()
     # if message:

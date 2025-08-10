@@ -20,3 +20,4 @@ archive/*
 .meili_data/*
 compose.yml
 dev.sh
+compose.dev.yml
