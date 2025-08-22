@@ -3,12 +3,15 @@ CREATE TABLE IF NOT EXISTS pages (
     id SERIAL PRIMARY KEY,
     title TEXT,
     url TEXT UNIQUE,
+    original_url TEXT,
     fingerprint TEXT UNIQUE,
     date DATE,
     text TEXT,
     page_tsv tsvector GENERATED ALWAYS AS (to_tsvector('english', title || ' ' || text)) STORED,
     scraped_on_date TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
+
+ALTER TABLE pages ADD COLUMN IF NOT EXISTS original_url TEXT;
 
 -- Ensure unique indexes exist even if the table predated UNIQUE constraints
 -- This allows INSERT ... ON CONFLICT (url) to work on older databases
