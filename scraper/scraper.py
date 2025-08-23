@@ -1,6 +1,5 @@
 import json
 import logging
-import math
 import os
 import re
 import sys
@@ -186,29 +185,40 @@ class Scraper:
         
         logger.info("Found %d new URLs out of %d for feed %s", len(new_urls), len(candidate_urls), feed)
         if new_urls:
-            limited_urls = list(new_urls)[:100] # to avoid too large message size
+            limited_urls = list(new_urls)[:30] # to avoid too large message size
             self.sqs_queue.send_message(limited_urls)
             logger.info("Sent %d new URLs to the queue", len(limited_urls))
         
-        # No longer tracking feed check dates since we use smallweb.txt directly
     
     def batch_check_urls_exist(self, urls: set) -> set:
-        """Check which URLs already exist in the database in a single batch query"""
+        """Check which URLs already exist in the database (checking both url and original_url columns)"""
         if not urls:
             return set()
             
         try:
             with self.db_connection() as conn:
                 cursor = conn.cursor()
-                # Convert set to list for SQL
                 url_list = list(urls)
-                # Create placeholders for the SQL query
-                placeholders = ','.join(['%s'] * len(url_list))
-                query = f"SELECT url FROM pages WHERE url IN ({placeholders})"
-                cursor.execute(query, url_list)
-                existing_urls = {row[0] for row in cursor.fetchall()}
+                
+                # Get rows where candidates appear in either column
+                cursor.execute("""
+                    SELECT url, original_url 
+                    FROM pages 
+                    WHERE url = ANY(%s) OR original_url = ANY(%s)
+                """, [url_list, url_list])
+                
+                results = cursor.fetchall()
+                
+                # Check which candidates we found
+                existing = set()
+                for final_url, original_url in results:
+                    if final_url in urls:
+                        existing.add(final_url)
+                    if original_url and original_url in urls:
+                        existing.add(original_url)
+                
                 cursor.close()
-                return existing_urls
+                return existing
         except (Exception, Error) as error:
             logger.error("Error batch checking URLs: %s", error)
             return set() # Assume all exist on error to avoid duplicates
@@ -409,6 +419,7 @@ class Scraper:
         page = {
             'title': extracted_dict['title'],
             'url': clean_url(final_url),  # Normalize the final URL
+            'original_url': clean_url(url),  # Store the original URL from RSS feed
             'fingerprint': extracted_dict['fingerprint'],
             'date': extracted_dict['date'],
             'text': extracted_dict['raw_text']
@@ -424,16 +435,17 @@ class Scraper:
                 cursor = conn.cursor()
                 # Use ON CONFLICT to handle duplicate URLs gracefully
                 cursor.execute("""
-                    INSERT INTO pages (title, url, fingerprint, date, text) 
-                    VALUES (%s, %s, %s, %s, %s)
+                    INSERT INTO pages (title, url, original_url, fingerprint, date, text) 
+                    VALUES (%s, %s, %s, %s, %s, %s)
                     ON CONFLICT (url) DO UPDATE
                         SET title = EXCLUDED.title,
+                            original_url = COALESCE(pages.original_url, EXCLUDED.original_url),
                             fingerprint = EXCLUDED.fingerprint,
                             date = EXCLUDED.date,
                             text = EXCLUDED.text,
                             scraped_on_date = CURRENT_TIMESTAMP
                     RETURNING id
-                """, (page['title'], page['url'], page['fingerprint'], page['date'], page['text']))
+                """, (page['title'], page['url'], page['original_url'], page['fingerprint'], page['date'], page['text']))
                 
                 result = cursor.fetchone()
                 if result:
