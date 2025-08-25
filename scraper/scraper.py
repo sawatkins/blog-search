@@ -19,7 +19,7 @@ from meilisearch import Client as MeiliSearch
 
 from sqs_queue import SQSQueue
 
-MAX_WORKERS = 23
+MAX_WORKERS = 21
 
 def setup_logger():
     logs_dir = os.path.join(os.path.dirname(__file__), 'logs')
@@ -56,7 +56,7 @@ class Scraper:
         try:
             self.connection_pool = pool.ThreadedConnectionPool(
                 minconn=5,  
-                maxconn=24, 
+                maxconn=21, 
                 host=os.getenv('PGHOST'),
                 database=os.getenv('PGDATABASE'),
                 user=os.getenv('PGUSER'),
@@ -274,6 +274,8 @@ class Scraper:
             body = json.loads(message['Body'])
             urls = body['urls']
             
+            urls = urls[:30] # tmp
+            
             #logger.info("Processing message with %d URLs", len(urls))
             
             visibility_timeout = self.calculate_visibility_timeout(len(urls))
@@ -308,24 +310,27 @@ class Scraper:
             
             error_count = 0
             consecutive_errors = 0
-            sleep_time = 5
+            sleep_time = 4
             
             for url in urls_to_scrape:
-                if consecutive_errors >= 5:
+                if consecutive_errors >= 2:
                     logger.error("Too many consecutive errors for %s, backing off", get_base_url(url))
-                    break
-                    
+                    sleep(sleep_time * 2)
+                
+                if error_count >= 4:
+                    logger.error("Too many errors for %s, skipping and deleting message for", get_base_url(url))
+                    self.sqs_queue.delete_message(receipt_handle)
+                    return
+                
                 try:
                     self.scrape_url(url)
-                    consecutive_errors = 0  # Reset on success
+                    consecutive_errors = 0  
                     if url != urls_to_scrape[-1]:
                         sleep(sleep_time)
                 except Exception as e:
                     error_count += 1
                     consecutive_errors += 1
-                    sleep_time = min(sleep_time * 1.5, 30)  # Exponential backoff, max 30s
-                    logger.error("Error scraping %s (consecutive: %d): %s", url, consecutive_errors, e)
-                    sleep(min(sleep_time, 10))  # Sleep on error, but cap at 10s
+                    logger.error("Error scraping %s (consecutive: %d): %s", url, consecutive_errors, e)  
 
             self.sqs_queue.delete_message(receipt_handle)
             logger.info("Deleted message after processing all URLs")
@@ -392,10 +397,11 @@ class Scraper:
             downloaded_content = trafilatura.fetch_url(url, config=config)
         except Exception as e:
             logger.error("Error downloading content for %s: %s", url, e)
-            return
+            raise e
+        
         if not downloaded_content:
             logger.warning("Failed to download content for %s", url)
-            return
+            raise Exception("Failed to download content for %s", url)
         
         if not trafilatura.readability_lxml.is_probably_readerable(downloaded_content):
             logger.warning("Downloaded content for %s is not readerable", url)
