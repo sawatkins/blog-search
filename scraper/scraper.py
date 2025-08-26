@@ -19,7 +19,7 @@ from meilisearch import Client as MeiliSearch
 
 from sqs_queue import SQSQueue
 
-MAX_WORKERS = 21
+MAX_WORKERS = 19
 
 def setup_logger():
     logs_dir = os.path.join(os.path.dirname(__file__), 'logs')
@@ -56,7 +56,7 @@ class Scraper:
         try:
             self.connection_pool = pool.ThreadedConnectionPool(
                 minconn=5,  
-                maxconn=21, 
+                maxconn=20, 
                 host=os.getenv('PGHOST'),
                 database=os.getenv('PGDATABASE'),
                 user=os.getenv('PGUSER'),
@@ -274,13 +274,14 @@ class Scraper:
             body = json.loads(message['Body'])
             urls = body['urls']
             
-            urls = urls[:30] # tmp
+            if len(urls) > 30: 
+               urls = urls[:30]
             
             #logger.info("Processing message with %d URLs", len(urls))
             
             visibility_timeout = self.calculate_visibility_timeout(len(urls))
             self.sqs_queue.change_message_visibility(receipt_handle, visibility_timeout)
-            logger.info("Changed message visibility to %d seconds", visibility_timeout)
+            #logger.info("Changed message visibility to %d seconds", visibility_timeout)
             task_timeout = int(visibility_timeout * 0.8)
             
             # Normalize and filter URLs for validity first
@@ -302,8 +303,6 @@ class Scraper:
                 # Filter URLs by robots.txt rules
                 urls_to_scrape = [url for url in urls_to_scrape if self.robots_allows_scraping(robot_parser, url)]
 
-            if len(urls_to_scrape) > 30: # remove this limit later
-                urls_to_scrape = urls_to_scrape[:30]
             
             logger.info("Processing %d new URLs sequentially from %d original URLs", 
                        len(urls_to_scrape), len(urls))
@@ -315,7 +314,7 @@ class Scraper:
             for url in urls_to_scrape:
                 if consecutive_errors >= 2:
                     logger.error("Too many consecutive errors for %s, backing off", get_base_url(url))
-                    sleep(sleep_time * 2)
+                    sleep(sleep_time)
                 
                 if error_count >= 4:
                     logger.error("Too many errors for %s, skipping and deleting message for", get_base_url(url))
@@ -330,7 +329,8 @@ class Scraper:
                 except Exception as e:
                     error_count += 1
                     consecutive_errors += 1
-                    logger.error("Error scraping %s (consecutive: %d): %s", url, consecutive_errors, e)  
+                    logger.error("Error scraping %s (consecutive: %d): %s", url, consecutive_errors, e)
+                    sleep(sleep_time)  
 
             self.sqs_queue.delete_message(receipt_handle)
             logger.info("Deleted message after processing all URLs")
