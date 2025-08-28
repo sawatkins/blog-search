@@ -61,7 +61,9 @@ class Scraper:
                 database=os.getenv('PGDATABASE'),
                 user=os.getenv('PGUSER'),
                 password=os.getenv('PGPASSWORD'),
-                port=os.getenv('PGPORT')
+                port=os.getenv('PGPORT', 5432),
+                sslmode=os.getenv('PGSSLMODE', 'prefer'),
+                channel_binding=os.getenv('PGCHANNELBINDING', 'prefer')
             )
             conn = self.connection_pool.getconn()
             self.connection_pool.putconn(conn)

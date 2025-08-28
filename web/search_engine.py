@@ -26,7 +26,9 @@ class SearchEngine:
                 database=os.getenv('PGDATABASE'),
                 user=os.getenv('PGUSER'),
                 password=os.getenv('PGPASSWORD'),
-                port=os.getenv('PGPORT')
+                port=os.getenv('PGPORT', 5432),
+                sslmode=os.getenv('PGSSLMODE', 'prefer'),
+                channel_binding=os.getenv('PGCHANNELBINDING', 'prefer')
             )
         except (Exception, Error) as error:
             print("Error while creating connection pool:", error)
