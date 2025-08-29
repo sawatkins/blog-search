@@ -261,10 +261,8 @@ class Scraper:
         
         return True
     
-
     def scrape(self, max_workers: int = MAX_WORKERS):
         """Scrape all urls from the queue and save them to the database, multithreaded"""
-        #self.enqueue_new_feed_entries(only_due_for_update=True)
         logger.info("Starting scrape with %d worker threads", max_workers)
         
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
@@ -289,7 +287,7 @@ class Scraper:
                 self.process_single_message(message)
             except Exception as e:
                 logger.error("Error processing message: %s", e)
-                sleep(5)
+                sleep(3)
     
     def process_single_message(self, message):
         """Process a single message from the queue.""" 
@@ -298,34 +296,17 @@ class Scraper:
             body = json.loads(message['Body'])
             urls = body['urls']
             
-            if len(urls) > 30: 
-               urls = urls[:30]
-            
             #logger.info("Processing message with %d URLs", len(urls))
             
             visibility_timeout = self.calculate_visibility_timeout(len(urls))
             self.sqs_queue.change_message_visibility(receipt_handle, visibility_timeout)
-            #logger.info("Changed message visibility to %d seconds", visibility_timeout)
-            task_timeout = int(visibility_timeout * 0.8)
             
-            # Normalize and filter URLs for validity first
-            valid_urls = []
-            for url in urls:
-                normalized_url = clean_url(url)
-                if normalized_url and self.is_url_valid(normalized_url) and self.is_blog_post_url(normalized_url):
-                    valid_urls.append(normalized_url)
-            
-            # Check which URLs already exist in database in one batch query
-            existing_urls = self.batch_check_urls_exist(set(valid_urls))
-            urls_to_scrape = [url for url in valid_urls if url not in existing_urls]
-            
-            # Check robots.txt once for this domain (since all URLs in message are same domain)
+            # Check robots.txt once for domain
             robot_parser = None
-            if urls_to_scrape:
-                domain_url = get_base_url(urls_to_scrape[0])
-                robot_parser = self.check_robots_for_domain(domain_url)
-                # Filter URLs by robots.txt rules
-                urls_to_scrape = [url for url in urls_to_scrape if self.robots_allows_scraping(robot_parser, url)]
+            domain_url = get_base_url(urls[0])
+            robot_parser = self.check_robots_for_domain(domain_url)
+            # Filter URLs by robots.txt rules
+            urls_to_scrape = [url for url in urls if self.robots_allows_scraping(robot_parser, url)]
 
             
             logger.info("Processing %d new URLs sequentially from %d original URLs", 
@@ -364,8 +345,7 @@ class Scraper:
 
     def calculate_visibility_timeout(self, num_urls: int) -> int:
         """Calculate visibility timeout for a message based on the number of urls"""
-        # 10s timeout + 5s sleep + 5s processing buffer = 20s per URL, plus 60s safety margin
-        return max(300, num_urls * 20 + 60)  # minimum 5 minutes, max based on URL count
+        return max(300, num_urls * 20 + 60)  # minimum 5 min
     
     def url_exists_in_db(self, url: str) -> bool:
         """Check if a url already exists in the database"""
@@ -395,16 +375,15 @@ class Scraper:
             return rp
         except Exception as e:
             logger.warning("Error fetching robots.txt for %s (allowing all): %s", domain_url, e)
-            # Create permissive robots parser for failed fetches
             permissive_rp = RobotFileParser()
             permissive_rp.set_url(robots_url)
-            # Empty robots.txt allows everything
             permissive_rp.parse([])
             return permissive_rp
     
     def robots_allows_scraping(self, robot_parser: RobotFileParser, url: str) -> bool:
         """Check if robots.txt allows scraping for a specific URL"""
-        return robot_parser.can_fetch("*", url)
+
+        return robot_parser.can_fetch("", url)
 
     def scrape_url(self, url: str):
         """Scrape a single url, save it to the database if it's a blog post"""
