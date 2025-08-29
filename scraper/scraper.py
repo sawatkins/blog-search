@@ -166,20 +166,18 @@ class Scraper:
 
     def process_feed(self, feed):
         """Process a single feed, extract new urls and enqueue them"""
-        logger.info("Processing feed: %s", feed)
+        #logger.info("Processing feed: %s", feed)
         try:  
             parsed_feed = fastfeedparser.parse(feed)
             link = parsed_feed.feed.link
             if not link:
-                logger.warning("Feed link not found") 
+                logger.warning("Feed link %s not found", feed) 
                 return
-            #logger.info("Feed link: %s", link)
-            logger.info("Found %d entries for feed %s", len(parsed_feed.entries), feed)
+            #logger.info("Found %d entries for feed %s", len(parsed_feed.entries), feed)
         except Exception as e:
             logger.error("Error parsing feed %s: %s", feed, e)
             return
 
-        # Collect candidate URLs first
         candidate_urls = set()
         try:
             for entry in parsed_feed.entries:
@@ -203,11 +201,11 @@ class Scraper:
         existing_urls = set(self.check_urls_already_exist(candidate_urls))
         new_urls = candidate_urls - existing_urls
         
-        logger.info("Found %d new URLs out of %d for feed %s", len(new_urls), len(candidate_urls), feed)
-        if new_urls:
+        logger.info("Found %d new URLs (limit 30) out of %d for feed %s", len(new_urls), len(candidate_urls), feed)
+        if new_urls and len(new_urls) > 0:
             limited_urls = list(new_urls)[:30] # to avoid too large message size
             self.sqs_queue.send_message(limited_urls)
-            logger.info("Sent %d new URLs to the queue", len(limited_urls))
+            #logger.info("Sent %d new URLs to the queue", len(limited_urls))
         
     
     def check_urls_already_exist(self, urls: set) -> set:
