@@ -38,8 +38,6 @@ def setup_logger():
     return logging.getLogger(__name__)
 
 logger = setup_logger()
-
-# Suppress trafilatura's verbose logging
 logging.getLogger('trafilatura').setLevel(logging.WARNING)
 
 class Scraper:
@@ -49,6 +47,7 @@ class Scraper:
         self.init_pool()
         self.init_db()        
         self.sqs_queue = SQSQueue()
+        self.existing_urls = None
         self.meilisearch_client = None
         self.init_meilisearch()
 
@@ -94,7 +93,6 @@ class Scraper:
                 url=os.getenv('MEILISEARCH_URL'),
                 api_key=os.getenv('MEILISEARCH_API_KEY')
             )
-            # Test connection
             self.meilisearch_client.health()
             logger.info("Connected to Meilisearch at %s", os.getenv('MEILISEARCH_URL'))
         except Exception as e:
@@ -114,7 +112,6 @@ class Scraper:
             logger.error("Error while initializing database: %s", error)
             sys.exit(1)
     
-
     def get_smallweb_feeds(self) -> set[str]:
         """Get list of rss feeds from smallweb project"""
         feeds_file_url = 'https://raw.githubusercontent.com/kagisearch/smallweb/refs/heads/main/smallweb.txt'
@@ -129,12 +126,16 @@ class Scraper:
             return set()
     
     def enqueue_new_feed_entries(self, max_workers: int = MAX_WORKERS):
-        # Clear any existing messages from previous runs
         logger.info("Clearing SQS queue before enqueuing new feeds")
         self.sqs_queue.purge_queue()
         
         feeds = self.get_smallweb_feeds()
-        #feeds = list(feeds)[6000:6005] # subset of feeds for testing
+        if not feeds or len(feeds) == 0:
+            logger.error("No feeds found to process")
+            return
+        # feeds = list(feeds)[6000:6005] # subset for testing
+
+        self.existing_urls = self.get_all_existing_urls()
         
         logger.info("\nProcessing %d feeds with %d worker threads\n", len(feeds), max_workers)
         
@@ -143,6 +144,25 @@ class Scraper:
             
         logger.info("All feeds processed")
     
+    def get_all_existing_urls(self) -> dict[str, int]:
+        """Get all existing urls from the database to avoid duplicates"""
+        existing_urls = {}
+        try:
+            with self.db_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute("SELECT url, original_url FROM pages")
+                rows = cursor.fetchall()
+                for url, original_url in rows:
+                    if url:
+                        existing_urls[clean_url(url)] = 1
+                    if original_url:
+                        existing_urls[clean_url(original_url)] = 1
+                cursor.close()
+        except (Exception, Error) as error:
+            logger.error("Error fetching existing URLs: %s", error)
+        
+        logger.info("Fetched %d existing URLs from database", len(existing_urls))
+        return existing_urls
 
     def process_feed(self, feed):
         """Process a single feed, extract new urls and enqueue them"""
@@ -152,7 +172,7 @@ class Scraper:
             link = parsed_feed.feed.link
             if not link:
                 logger.warning("Feed link not found") 
-                return # is this necessary?
+                return
             #logger.info("Feed link: %s", link)
             logger.info("Found %d entries for feed %s", len(parsed_feed.entries), feed)
         except Exception as e:
@@ -164,7 +184,7 @@ class Scraper:
         try:
             for entry in parsed_feed.entries:
                 if hasattr(entry, 'link'):
-                    entry_link = clean_url(entry.link)  # Normalize URL
+                    entry_link = clean_url(entry.link)  
                     if not entry_link or not self.is_url_valid(entry_link):
                         logger.debug("Skipping invalid URL: %s", entry.link)
                         continue
@@ -178,11 +198,9 @@ class Scraper:
             
         if not candidate_urls:
             logger.info("No valid URLs found for feed %s", feed)
-            # No longer tracking feed check dates since we use smallweb.txt directly
             return
 
-        # Check which URLs already exist in a single batch query
-        existing_urls = self.batch_check_urls_exist(candidate_urls)
+        existing_urls = set(self.check_urls_already_exist(candidate_urls))
         new_urls = candidate_urls - existing_urls
         
         logger.info("Found %d new URLs out of %d for feed %s", len(new_urls), len(candidate_urls), feed)
@@ -192,6 +210,12 @@ class Scraper:
             logger.info("Sent %d new URLs to the queue", len(limited_urls))
         
     
+    def check_urls_already_exist(self, urls: set) -> set:
+        """Check which urls alreay exist in the database"""
+        for url in urls:
+            if url in self.existing_urls:
+                yield url
+
     def batch_check_urls_exist(self, urls: set) -> set:
         """Check which URLs already exist in the database (checking both url and original_url columns)"""
         if not urls:
