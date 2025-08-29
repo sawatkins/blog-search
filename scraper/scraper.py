@@ -305,12 +305,14 @@ class Scraper:
             robot_parser = None
             domain_url = get_base_url(urls[0])
             robot_parser = self.check_robots_for_domain(domain_url)
-            # Filter URLs by robots.txt rules
             urls_to_scrape = [url for url in urls if self.robots_allows_scraping(robot_parser, url)]
+            if not urls_to_scrape or len(urls_to_scrape) == 0:
+                logger.info("No URLs allowed by robots.txt for domain %s, deleting message", domain_url)
+                self.sqs_queue.delete_message(receipt_handle)
+                return
 
-            
-            logger.info("Processing %d new URLs sequentially from %d original URLs", 
-                       len(urls_to_scrape), len(urls))
+            logger.info("Processing %d new URLs sequentially from %d original URLs (%d blocked by robots.txt)", 
+                       len(urls_to_scrape), len(urls), len(urls) - len(urls_to_scrape))
             
             error_count = 0
             consecutive_errors = 0
@@ -382,8 +384,7 @@ class Scraper:
     
     def robots_allows_scraping(self, robot_parser: RobotFileParser, url: str) -> bool:
         """Check if robots.txt allows scraping for a specific URL"""
-
-        return robot_parser.can_fetch("", url)
+        return robot_parser.can_fetch("BlogSearchBot", url)
 
     def scrape_url(self, url: str):
         """Scrape a single url, save it to the database if it's a blog post"""
