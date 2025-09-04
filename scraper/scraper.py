@@ -50,6 +50,7 @@ class Scraper:
         self.existing_urls = None
         self.meilisearch_client = None
         self.init_meilisearch()
+        self.trafilatura_config = self.setup_trafilatura_config()
 
     def init_pool(self):
         try:
@@ -85,6 +86,15 @@ class Scraper:
 
     def __del__(self):
         self.close_pool()
+
+    def setup_trafilatura_config(self):
+        config = trafilatura.settings.use_config()
+        try:
+            config.set('DEFAULT', 'USER_AGENTS', 'BlogSearchBot/1.0 (+https://blogsearch.io/bot)')
+            config.set('DEFAULT', 'DOWNLOAD_TIMEOUT', '12')
+        except Exception:
+            logger.warning("Could not set trafilatura config options, using defaults")
+        return config
 
     def init_meilisearch(self):
         """Initialize Meilisearch client with error handling"""
@@ -183,7 +193,7 @@ class Scraper:
             for entry in parsed_feed.entries:
                 if hasattr(entry, 'link'):
                     entry_link = clean_url(entry.link)  
-                    if not entry_link or not self.is_url_valid(entry_link):
+                    if not entry_link or not is_valid_url(entry_link):
                         logger.debug("Skipping invalid URL: %s", entry.link)
                         continue
                     if not self.is_blog_post_url(entry_link):
@@ -207,7 +217,7 @@ class Scraper:
             self.sqs_queue.send_message(limited_urls)
             #logger.info("Sent %d new URLs to the queue", len(limited_urls))
         
-    
+
     def check_urls_already_exist(self, urls: set) -> set:
         """Check which urls alreay exist in the database"""
         for url in urls:
@@ -250,7 +260,7 @@ class Scraper:
     def is_blog_post_url(self, url: str) -> bool:
         """Basic check if a url follow known non-blog patterns"""
         non_blog_patterns = [
-            r'^.*/(about|links|tags|categories|archive|contact)(/.*)?$',  
+            r'^.*/(about|links|tags|categories|archive|comic|contact)(/.*)?$',  
             r'^.*/(author|tag|category)/[^/]+(/.*)?$',                    
             r'^.*/(tag|category)(/.*)?$'                                   
         ]
@@ -311,33 +321,34 @@ class Scraper:
                 self.sqs_queue.delete_message(receipt_handle)
                 return
 
-            logger.info("Processing %d new URLs sequentially from %d original URLs (%d blocked by robots.txt)", 
-                       len(urls_to_scrape), len(urls), len(urls) - len(urls_to_scrape))
+            logger.info("Processing %d new URLs for %s (%d original URLs, %d blocked by robots.txt)", 
+                       len(urls_to_scrape), domain_url, len(urls), len(urls) - len(urls_to_scrape))
             
             error_count = 0
             consecutive_errors = 0
             sleep_time = 4
             
             for url in urls_to_scrape:
-                if consecutive_errors >= 2:
-                    logger.error("Too many consecutive errors for %s, backing off", get_base_url(url))
-                    sleep(sleep_time)
-                
                 if error_count >= 4:
                     logger.error("Too many errors for %s, skipping and deleting message for", get_base_url(url))
                     self.sqs_queue.delete_message(receipt_handle)
                     return
                 
+                if consecutive_errors >= 2:
+                    logger.error("Too many consecutive errors for %s, backing off", get_base_url(url))
+                    sleep(sleep_time * 2)
+                
                 try:
                     self.scrape_url(url)
                     consecutive_errors = 0  
-                    if url != urls_to_scrape[-1]:
-                        sleep(sleep_time)
+                    if url = urls_to_scrape[-1]:
+                        break
                 except Exception as e:
                     error_count += 1
                     consecutive_errors += 1
                     logger.error("Error scraping %s (consecutive: %d): %s", url, consecutive_errors, e)
-                    sleep(sleep_time)  
+                
+                sleep(sleep_time)  
 
             self.sqs_queue.delete_message(receipt_handle)
             logger.info("Deleted message after processing all URLs")
@@ -348,23 +359,6 @@ class Scraper:
     def calculate_visibility_timeout(self, num_urls: int) -> int:
         """Calculate visibility timeout for a message based on the number of urls"""
         return max(300, num_urls * 20 + 60)  # minimum 5 min
-    
-    def url_exists_in_db(self, url: str) -> bool:
-        """Check if a url already exists in the database"""
-        try:
-            with self.db_connection() as conn:
-                cursor = conn.cursor()
-                cursor.execute("SELECT EXISTS(SELECT 1 FROM pages WHERE url = %s)", (url,))
-                exists = cursor.fetchone()[0]
-                cursor.close()
-                return exists
-        except (Exception, Error) as error:
-            logger.error("Error checking URL existence: %s", error)
-            return True
-    
-    def is_url_valid(self, url: str) -> bool:
-        """Check if a url is valid"""
-        return is_valid_url(url)
 
     def check_robots_for_domain(self, domain_url: str) -> RobotFileParser:
         """Check robots.txt for a domain once per message processing"""
@@ -391,14 +385,7 @@ class Scraper:
         logger.info("Scraping URL: %s", url)
 
         try:
-            config = trafilatura.settings.use_config()
-            try:
-                config.set('DEFAULT', 'USER_AGENT', 'BlogSearchBot/1.0 (+https://blogsearch.io/bot)')
-                config.set('DEFAULT', 'DOWNLOAD_TIMEOUT', '10')
-            except Exception:
-                pass
-
-            downloaded_content = trafilatura.fetch_url(url, config=config)
+            downloaded_content = trafilatura.fetch_url(url, self.trafilatura_config)
         except Exception as e:
             logger.error("Error downloading content for %s: %s", url, e)
             raise e
@@ -422,7 +409,7 @@ class Scraper:
             return
         
         # Use the final URL from trafilatura if available (handles redirects)
-        final_url = extracted_dict.get('url', url)
+        final_url = extracted_dict.get('url')
         if final_url != url:
             logger.info("URL redirected from %s to %s", url, final_url)
         
