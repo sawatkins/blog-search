@@ -160,19 +160,21 @@ class Scraper:
         try:
             with self.db_connection() as conn:
                 cursor = conn.cursor()
-                cursor.execute("SELECT url, original_url FROM pages")
+                cursor.execute("SELECT url FROM pages")
                 rows = cursor.fetchall()
-                for url, original_url in rows:
+                for url in rows:
                     if url:
-                        existing_urls[clean_url(url)] = 1
-                    if original_url:
-                        existing_urls[clean_url(original_url)] = 1
+                        existing_urls[self.get_stripped_url(clean_url(url))] = 1
                 cursor.close()
         except (Exception, Error) as error:
             logger.error("Error fetching existing URLs: %s", error)
         
         logger.info("Fetched %d existing URLs from database", len(existing_urls))
         return existing_urls
+    
+    def get_stripped_url(self, url: str) -> str:
+        """Return URL without http(s)://, www., query params, or trailing slash"""
+        return re.sub(r'^(https?://)?(www\.)?', '', url).split('?')[0].rstrip('/')
 
     def process_feed(self, feed):
         """Process a single feed, extract new urls and enqueue them"""
@@ -221,41 +223,10 @@ class Scraper:
     def check_urls_already_exist(self, urls: set) -> set:
         """Check which urls alreay exist in the database"""
         for url in urls:
-            if url in self.existing_urls:
+            if self.get_stripped_url(clean_url(url)) in self.existing_urls:
                 yield url
 
-    def batch_check_urls_exist(self, urls: set) -> set:
-        """Check which URLs already exist in the database (checking both url and original_url columns)"""
-        if not urls:
-            return set()
-            
-        try:
-            with self.db_connection() as conn:
-                cursor = conn.cursor()
-                url_list = list(urls)
                 
-                # Get rows where candidates appear in either column
-                cursor.execute("""
-                    SELECT url, original_url 
-                    FROM pages 
-                    WHERE url = ANY(%s) OR original_url = ANY(%s)
-                """, [url_list, url_list])
-                
-                results = cursor.fetchall()
-                
-                # Check which candidates we found
-                existing = set()
-                for final_url, original_url in results:
-                    if final_url in urls:
-                        existing.add(final_url)
-                    if original_url and original_url in urls:
-                        existing.add(original_url)
-                
-                cursor.close()
-                return existing
-        except (Exception, Error) as error:
-            logger.error("Error batch checking URLs: %s", error)
-            return set() # Assume all exist on error to avoid duplicates
     
     def is_blog_post_url(self, url: str) -> bool:
         """Basic check if a url follow known non-blog patterns"""
@@ -408,15 +379,9 @@ class Scraper:
             logger.warning("Extracted text for %s is too short", url)
             return
         
-        # Use the final URL from trafilatura if available (handles redirects)
-        final_url = extracted_dict.get('url')
-        if final_url != url:
-            logger.info("URL redirected from %s to %s", url, final_url)
-        
         page = {
             'title': extracted_dict['title'],
-            'url': clean_url(final_url),  # Normalize the final URL
-            'original_url': clean_url(url),  # Store the original URL from RSS feed
+            'url': clean_url(extracted_dict['url']),  
             'fingerprint': extracted_dict['fingerprint'],
             'date': extracted_dict['date'],
             'text': extracted_dict['raw_text']
@@ -432,17 +397,16 @@ class Scraper:
                 cursor = conn.cursor()
                 # Use ON CONFLICT to handle duplicate URLs gracefully
                 cursor.execute("""
-                    INSERT INTO pages (title, url, original_url, fingerprint, date, text) 
-                    VALUES (%s, %s, %s, %s, %s, %s)
+                    INSERT INTO pages (title, url, fingerprint, date, text) 
+                    VALUES (%s, %s, %s, %s, %s)
                     ON CONFLICT (url) DO UPDATE
                         SET title = EXCLUDED.title,
-                            original_url = COALESCE(pages.original_url, EXCLUDED.original_url),
                             fingerprint = EXCLUDED.fingerprint,
                             date = EXCLUDED.date,
                             text = EXCLUDED.text,
                             scraped_on_date = CURRENT_TIMESTAMP
                     RETURNING id
-                """, (page['title'], page['url'], page['original_url'], page['fingerprint'], page['date'], page['text']))
+                """, (page['title'], page['url'], page['fingerprint'], page['date'], page['text']))
                 
                 result = cursor.fetchone()
                 if result:
@@ -476,14 +440,12 @@ class Scraper:
                 'text': page['text'] or ''
             }
             
-            # Add document to Meilisearch
             index = self.meilisearch_client.index('pages')
             task = index.add_documents([document])
             logger.debug("Added page to Meilisearch search index: %s (task: %s)", page['url'], task.task_uid)
             
         except Exception as e:
             logger.warning("Failed to index page in Meilisearch %s: %s", page['url'], e)
-            # Continue execution - don't fail the scrape if Meilisearch fails
 
     def tmp(self):
         pass
