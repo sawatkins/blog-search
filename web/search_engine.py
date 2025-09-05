@@ -39,9 +39,10 @@ class SearchEngine:
         if self.connection_pool is None:
             self.init_pool()
         conn = self.connection_pool.getconn()
-        with conn.cursor() as cursor:
-            cursor.execute("SELECT 1")
-            cursor.fetchone()
+        try:
+            with conn.cursor() as cursor:
+                cursor.execute("SELECT 1")
+                cursor.fetchone()
         except Exception:
             self.connection_pool.putconn(conn, close=True)
             conn = self.connection_pool.getconn()
