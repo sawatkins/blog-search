@@ -2,6 +2,7 @@ from dotenv import load_dotenv
 import re
 import os
 import sys
+import random
 from psycopg2 import Error
 from psycopg2 import pool
 from meilisearch import Client as MeiliSearch
@@ -182,8 +183,10 @@ class SearchEngine:
     def get_random_post(self) -> dict:
         conn = self.get_connection()
         try:
+            random_id = random.randint(1, self.size)
+            print(f"Random ID: {random_id}")
             with conn.cursor() as cursor:
-                cursor.execute("SELECT title, url, date, text FROM pages ORDER BY RANDOM() LIMIT 1")
+                cursor.execute("SELECT title, url, date, text FROM pages WHERE id = %s LIMIT 1", (random_id,))
                 row = cursor.fetchone()
                 return {
                     'title': row[0],
