@@ -21,8 +21,8 @@ class SearchEngine:
     def init_pool(self):
         try:
             self.connection_pool = pool.ThreadedConnectionPool(
-                minconn=1,  
-                maxconn=3, 
+                minconn=3,  
+                maxconn=10, 
                 host=os.getenv('PGHOST'),
                 database=os.getenv('PGDATABASE'),
                 user=os.getenv('PGUSER'),
@@ -38,7 +38,14 @@ class SearchEngine:
     def get_connection(self):
         if self.connection_pool is None:
             self.init_pool()
-        return self.connection_pool.getconn()
+        conn = self.connection_pool.getconn()
+        with conn.cursor() as cursor:
+            cursor.execute("SELECT 1")
+            cursor.fetchone()
+        except Exception:
+            self.connection_pool.putconn(conn, close=True)
+            conn = self.connection_pool.getconn()
+        return conn
 
     def release_connection(self, connection):
         if self.connection_pool is not None:
@@ -184,7 +191,6 @@ class SearchEngine:
         conn = self.get_connection()
         try:
             random_id = random.randint(1, self.size)
-            print(f"Random ID: {random_id}")
             with conn.cursor() as cursor:
                 cursor.execute("SELECT title, url, date, text FROM pages WHERE id = %s LIMIT 1", (random_id,))
                 row = cursor.fetchone()
