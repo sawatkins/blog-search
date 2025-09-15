@@ -19,7 +19,7 @@ from meilisearch import Client as MeiliSearch
 
 from sqs_queue import SQSQueue
 
-MAX_WORKERS = 19
+MAX_WORKERS = 100
 
 def setup_logger():
     logs_dir = os.path.join(os.path.dirname(__file__), 'logs')
@@ -47,16 +47,16 @@ class Scraper:
         self.init_pool()
         self.init_db()        
         self.sqs_queue = SQSQueue()
-        self.existing_urls = None
+        self.existing_stripped_urls = None
         self.meilisearch_client = None
         self.init_meilisearch()
-        self.trafilatura_config = self.setup_trafilatura_config()
+        self.setup_trafilatura_config()
 
     def init_pool(self):
         try:
             self.connection_pool = pool.ThreadedConnectionPool(
                 minconn=5,  
-                maxconn=20, 
+                maxconn=150, 
                 host=os.getenv('PGHOST'),
                 database=os.getenv('PGDATABASE'),
                 user=os.getenv('PGUSER'),
@@ -92,9 +92,9 @@ class Scraper:
         try:
             config.set('DEFAULT', 'USER_AGENTS', 'BlogSearchBot/1.0 (+https://blogsearch.io/bot)')
             config.set('DEFAULT', 'DOWNLOAD_TIMEOUT', '12')
+            trafilatura.settings.set_config(config)
         except Exception:
             logger.warning("Could not set trafilatura config options, using defaults")
-        return config
 
     def init_meilisearch(self):
         """Initialize Meilisearch client with error handling"""
@@ -145,7 +145,7 @@ class Scraper:
             return
         # feeds = list(feeds)[6000:6005] # subset for testing
 
-        self.existing_urls = self.get_all_existing_urls()
+        self.existing_stripped_urls = self.get_all_existing_stripped_urls()
         
         logger.info("\nProcessing %d feeds with %d worker threads\n", len(feeds), max_workers)
         
@@ -154,7 +154,7 @@ class Scraper:
             
         logger.info("All feeds processed")
     
-    def get_all_existing_urls(self) -> dict[str, int]:
+    def get_all_existing_stripped_urls(self) -> dict[str, int]:
         """Get all existing urls from the database to avoid duplicates"""
         existing_urls = {}
         try:
@@ -162,9 +162,11 @@ class Scraper:
                 cursor = conn.cursor()
                 cursor.execute("SELECT url FROM pages")
                 rows = cursor.fetchall()
-                for url in rows:
-                    if url:
-                        existing_urls[self.get_stripped_url(clean_url(url))] = 1
+                print("rows:", len(rows))
+                print("rows sample:", rows[:2])
+                for row in rows:
+                    if row[0]:
+                        existing_urls[self.get_stripped_url(clean_url(row[0]))] = 1
                 cursor.close()
         except (Exception, Error) as error:
             logger.error("Error fetching existing URLs: %s", error)
@@ -207,26 +209,28 @@ class Scraper:
             return
             
         if not candidate_urls:
-            logger.info("No valid URLs found for feed %s", feed)
+            logger.info("No valid URLs found for feed %s", link)
             return
 
+        # Debug logging to show candidate URLs
+        logger.debug("Candidate URLs (first 5): %s", list(candidate_urls)[:5])
+
         existing_urls = set(self.check_urls_already_exist(candidate_urls))
+        logger.debug("Existing URLs (first 5): %s", list(existing_urls)[:5])
         new_urls = candidate_urls - existing_urls
-        
-        logger.info("Found %d new URLs (limit 30) out of %d for feed %s", len(new_urls), len(candidate_urls), feed)
+        logger.debug("Candidate/Existing/New counts: %d / %d / %d", len(candidate_urls), len(existing_urls), len(new_urls))
+
+        logger.info("Found %d/%d new URLs (limit 30) for feed %s", len(new_urls), len(candidate_urls), feed)
         if new_urls and len(new_urls) > 0:
-            limited_urls = list(new_urls)[:30] # to avoid too large message size
+            limited_urls = list(new_urls)[:30]  # to avoid too large message size
             self.sqs_queue.send_message(limited_urls)
-            #logger.info("Sent %d new URLs to the queue", len(limited_urls))
-        
+            logger.info("Sent %d new URLs from %s to the queue", len(limited_urls), link)
 
     def check_urls_already_exist(self, urls: set) -> set:
         """Check which urls alreay exist in the database"""
         for url in urls:
-            if self.get_stripped_url(clean_url(url)) in self.existing_urls:
+            if self.get_stripped_url(clean_url(url)) in self.existing_stripped_urls:
                 yield url
-
-                
     
     def is_blog_post_url(self, url: str) -> bool:
         """Basic check if a url follow known non-blog patterns"""
@@ -312,8 +316,6 @@ class Scraper:
                 try:
                     self.scrape_url(url)
                     consecutive_errors = 0  
-                    if url = urls_to_scrape[-1]:
-                        break
                 except Exception as e:
                     error_count += 1
                     consecutive_errors += 1
@@ -356,7 +358,7 @@ class Scraper:
         logger.info("Scraping URL: %s", url)
 
         try:
-            downloaded_content = trafilatura.fetch_url(url, self.trafilatura_config)
+            downloaded_content = trafilatura.fetch_url(url)
         except Exception as e:
             logger.error("Error downloading content for %s: %s", url, e)
             raise e
@@ -386,6 +388,7 @@ class Scraper:
             'date': extracted_dict['date'],
             'text': extracted_dict['raw_text']
         }
+        logger.info("Attempting to save page: %s", url)
         self.save_page(page)
         logger.info("Successfully processed and saved page: %s", url)
     
@@ -474,11 +477,11 @@ if __name__ == "__main__":
         if command == "enqueue":
             logger.info("ENQUEUE")
             scraper.enqueue_new_feed_entries()
-        elif command == "process":
-            logger.info("PROCESSING")
+        elif command == "scrape":
+            logger.info("SCRAPE")
             scraper.scrape()
-        elif command == "run":
-            logger.info("RUN (ENQUEUE + PROCESS)")
+        elif command == "all":
+            logger.info("ALL (ENQUEUE + PROCESS)")
             scraper.enqueue_new_feed_entries()
             logger.info("Enqueue complete, starting processing...")
             scraper.scrape()
