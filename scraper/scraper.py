@@ -145,7 +145,7 @@ class Scraper:
             return
         # feeds = list(feeds)[6000:6005] # subset for testing
 
-        self.existing_stripped_urls = self.get_all_existing_stripped_urls()
+        self.existing_stripped_urls = self.get_existing_and_skipped_urls()
         
         logger.info("\nProcessing %d feeds with %d worker threads\n", len(feeds), max_workers)
         
@@ -154,9 +154,9 @@ class Scraper:
             
         logger.info("All feeds processed")
     
-    def get_all_existing_stripped_urls(self) -> dict[str, int]:
-        """Get all existing urls from the database to avoid duplicates"""
-        existing_urls = {}
+    def get_existing_and_skipped_urls(self) -> dict[str, int]:
+        """Get all existing and skipped urls from the db as stripped"""
+        existing_urls: dict[str, int] = {}
         try:
             with self.db_connection() as conn:
                 cursor = conn.cursor()
@@ -167,6 +167,11 @@ class Scraper:
                 for row in rows:
                     if row[0]:
                         existing_urls[self.get_stripped_url(clean_url(row[0]))] = 1
+                cursor.execute("SELECT stripped_url FROM skipped_urls")
+                skipped_rows = cursor.fetchall()
+                for row in skipped_rows:
+                    if row[0]:
+                        existing_urls[row[0]] = 1
                 cursor.close()
         except (Exception, Error) as error:
             logger.error("Error fetching existing URLs: %s", error)
@@ -369,6 +374,7 @@ class Scraper:
         
         if not trafilatura.readability_lxml.is_probably_readerable(downloaded_content):
             logger.warning("Downloaded content for %s is not readerable", url)
+            self.record_skipped_url(url, "not_readerable")
             return
         
         extracted = trafilatura.extract(downloaded_content, output_format='json', with_metadata=True)
@@ -379,6 +385,7 @@ class Scraper:
         extracted_dict = json.loads(extracted)
         if len(extracted_dict['raw_text'].split()) < 100:
             logger.warning("Extracted text for %s is too short", url)
+            self.record_skipped_url(url, "too_short")
             return
         
         page = {
@@ -391,7 +398,33 @@ class Scraper:
         logger.info("Attempting to save page: %s", url)
         self.save_page(page)
         logger.info("Successfully processed and saved page: %s", url)
-    
+
+    def record_skipped_url(self, url: str, reason: str):
+        """Persist stripped URLs that should be skipped in future runs"""
+        stripped_url = self.get_stripped_url(clean_url(url))
+        if not stripped_url:
+            return
+
+        try:
+            with self.db_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    """
+                        INSERT INTO skipped_urls (stripped_url, reason)
+                        VALUES (%s, %s)
+                        ON CONFLICT (stripped_url) DO UPDATE
+                            SET reason = EXCLUDED.reason
+                    """,
+                    (stripped_url, reason)
+                )
+                conn.commit()
+                cursor.close()
+        except (Exception, Error) as error:
+            logger.error("Error recording skipped URL %s: %s", stripped_url, error)
+        finally:
+            if isinstance(self.existing_stripped_urls, dict):
+                self.existing_stripped_urls[stripped_url] = 1
+
     def save_page(self, page: dict):
         """Save a page to the database and index in Meilisearch"""
         db_saved = False
@@ -492,5 +525,4 @@ if __name__ == "__main__":
             logger.info("Available commands: enqueue, process, run, tmp")
     else:
         logger.info("Available commands: enqueue, process, run, tmp")
-
 

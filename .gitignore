@@ -22,3 +22,4 @@ archive/*
 compose.yml
 dev.sh
 compose.dev.yml
+CLAUDE.md
