@@ -1,3 +1,4 @@
+from typing import Any, Dict
 from dotenv import load_dotenv
 import re
 import os
@@ -150,22 +151,44 @@ class SearchEngine:
             api_key=os.getenv('MEILISEARCH_API_KEY')
         )
     
-    def search_meilisearch(self, query: str) -> list[dict]:
+    def search_meilisearch(self, query: str) -> Dict[str, Any]:
         if self.meilisearch_client is None:
             self.init_meilisearch()
         query_words = self.clean_text(query)
         if not query_words:
-            return []
+            return {'results': [], 'results_size': 0, 'search_time': 0}
         results = self.meilisearch_client.index('pages').search(query_words, {'limit': 24})
+        return self._format_meilisearch_response(results)
+
+    def search_meilisearch_hybrid(self, query: str) -> Dict[str, Any]:
+        if self.meilisearch_client is None:
+            self.init_meilisearch()
+        query_words = self.clean_text(query)
+        if not query_words:
+            return {'results': [], 'results_size': 0, 'search_time': 0}
+        results = self.meilisearch_client.index('pages').search(
+            query_words,
+            {
+                'limit': 24,
+                'hybrid': {
+                    'semanticRatio': 0.75,
+                    'embedder': 'default'
+                }
+            }
+        )
+        return self._format_meilisearch_response(results)
+
+    def _format_meilisearch_response(self, results: Dict[str, Any]) -> Dict[str, Any]:
+        hits = results.get('hits', [])
         return {
             'results': [
                 {
-                    'title': result['title'] if 'title' in result else '',
-                    'url': result['url'],
-                    'date': result['date'] if 'date' in result else '',
-                    'text': ' '.join(result['text'].split(' ')[:300]) if 'text' in result else ''
+                    'title': hit.get('title', ''),
+                    'url': hit.get('url', '').rstrip('/'),
+                    'date': hit.get('date', ''),
+                    'text': ' '.join(hit.get('text', '').split(' ')[:300])
                 }
-                for result in results['hits']
+                for hit in hits
             ],
             'results_size': results.get('estimatedTotalHits', 0),
             'search_time': results.get('processingTimeMs', 0)

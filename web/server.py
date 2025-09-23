@@ -64,6 +64,7 @@ async def search_page(request: Request, background_tasks: BackgroundTasks, q: st
     )
         
     use_postgres = request.query_params.get("use_postgres", "false").lower() == "true"
+    search_mode = request.query_params.get("search_mode", "keyword").lower()
     if use_postgres:
         start_time = time.time()
         results = search_engine.search(query)
@@ -71,7 +72,10 @@ async def search_page(request: Request, background_tasks: BackgroundTasks, q: st
         search_time = round(end_time - start_time, 2)
         response = {'results_size': len(results)}
     else:
-        response = search_engine.search_meilisearch(query)
+        if search_mode == "keyword":
+           response = search_engine.search_meilisearch(query) 
+        else:
+            response = search_engine.search_meilisearch_hybrid(query)
         search_time = round(response.get('search_time', 0) / 1000, 2)
         results = response.get('results', [])
     
