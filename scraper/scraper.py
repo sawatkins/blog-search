@@ -21,31 +21,31 @@ from sqs_queue import SQSQueue
 
 MAX_WORKERS = 100
 
+
 def setup_logger():
-    logs_dir = os.path.join(os.path.dirname(__file__), 'logs')
+    logs_dir = os.path.join(os.path.dirname(__file__), "logs")
     os.makedirs(logs_dir, exist_ok=True)
-    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-    log_file = os.path.join(logs_dir, f'{timestamp}_scraper.log')
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    log_file = os.path.join(logs_dir, f"{timestamp}_scraper.log")
 
     logging.basicConfig(
         level=logging.INFO,
-        format='%(asctime)s - %(threadName)s - %(levelname)s - %(message)s',
-        handlers=[
-            logging.StreamHandler(),
-            logging.FileHandler(log_file)
-        ]
+        format="%(asctime)s - %(threadName)s - %(levelname)s - %(message)s",
+        handlers=[logging.StreamHandler(), logging.FileHandler(log_file)],
     )
     return logging.getLogger(__name__)
 
+
 logger = setup_logger()
-logging.getLogger('trafilatura').setLevel(logging.WARNING)
+logging.getLogger("trafilatura").setLevel(logging.WARNING)
+
 
 class Scraper:
     def __init__(self):
         load_dotenv()
-        self.connection_pool: pool.ThreadedConnectionPool 
+        self.connection_pool: pool.ThreadedConnectionPool
         self.init_pool()
-        self.init_db()        
+        self.init_db()
         self.sqs_queue = SQSQueue()
         self.existing_stripped_urls = None
         self.meilisearch_client = None
@@ -55,15 +55,15 @@ class Scraper:
     def init_pool(self):
         try:
             self.connection_pool = pool.ThreadedConnectionPool(
-                minconn=5,  
-                maxconn=150, 
-                host=os.getenv('PGHOST'),
-                database=os.getenv('PGDATABASE'),
-                user=os.getenv('PGUSER'),
-                password=os.getenv('PGPASSWORD'),
-                port=os.getenv('PGPORT', 5432),
-                sslmode=os.getenv('PGSSLMODE', 'prefer'),
-                channel_binding=os.getenv('PGCHANNELBINDING', 'prefer')
+                minconn=5,
+                maxconn=150,
+                host=os.getenv("PGHOST"),
+                database=os.getenv("PGDATABASE"),
+                user=os.getenv("PGUSER"),
+                password=os.getenv("PGPASSWORD"),
+                port=os.getenv("PGPORT", 5432),
+                sslmode=os.getenv("PGSSLMODE", "prefer"),
+                channel_binding=os.getenv("PGCHANNELBINDING", "prefer"),
             )
             conn = self.connection_pool.getconn()
             self.connection_pool.putconn(conn)
@@ -90,8 +90,12 @@ class Scraper:
     def setup_trafilatura_config(self):
         config = trafilatura.settings.use_config()
         try:
-            config.set('DEFAULT', 'USER_AGENTS', 'BlogSearchBot/1.0 (+https://blogsearch.io/bot)')
-            config.set('DEFAULT', 'DOWNLOAD_TIMEOUT', '12')
+            config.set(
+                "DEFAULT",
+                "USER_AGENTS",
+                "BlogSearchBot/1.0 (+https://blogsearch.io/bot)",
+            )
+            config.set("DEFAULT", "DOWNLOAD_TIMEOUT", "12")
             trafilatura.settings.set_config(config)
         except Exception:
             logger.warning("Could not set trafilatura config options, using defaults")
@@ -100,19 +104,21 @@ class Scraper:
         """Initialize Meilisearch client with error handling"""
         try:
             self.meilisearch_client = MeiliSearch(
-                url=os.getenv('MEILISEARCH_URL'),
-                api_key=os.getenv('MEILISEARCH_API_KEY')
+                url=os.getenv("MEILISEARCH_URL"),
+                api_key=os.getenv("MEILISEARCH_API_KEY"),
             )
             self.meilisearch_client.health()
-            logger.info("Connected to Meilisearch at %s", os.getenv('MEILISEARCH_URL'))
+            logger.info("Connected to Meilisearch at %s", os.getenv("MEILISEARCH_URL"))
         except Exception as e:
-            logger.warning("Could not connect to Meilisearch (will skip indexing): %s", e)
+            logger.warning(
+                "Could not connect to Meilisearch (will skip indexing): %s", e
+            )
             self.meilisearch_client = None
-    
+
     def init_db(self):
         try:
-            filepath = os.path.join(os.path.dirname(__file__), '..', 'db', 'schema.sql')
-            with open(filepath, 'r') as f:
+            filepath = os.path.join(os.path.dirname(__file__), "..", "db", "schema.sql")
+            with open(filepath, "r") as f:
                 schema = f.read()
                 with self.db_connection() as conn:
                     with conn.cursor() as cur:
@@ -121,24 +127,28 @@ class Scraper:
         except (Exception, Error) as error:
             logger.error("Error while initializing database: %s", error)
             sys.exit(1)
-    
+
     def get_smallweb_feeds(self) -> set[str]:
         """Get list of rss feeds from smallweb project"""
-        feeds_file_url = 'https://raw.githubusercontent.com/kagisearch/smallweb/refs/heads/main/smallweb.txt'
+        feeds_file_url = "https://raw.githubusercontent.com/kagisearch/smallweb/refs/heads/main/smallweb.txt"
         try:
             response = requests.get(feeds_file_url)
-            response.raise_for_status()  
-            
-            return {line.strip().rstrip('/') for line in response.text.splitlines() if line.strip()}
-        
+            response.raise_for_status()
+
+            return {
+                line.strip().rstrip("/")
+                for line in response.text.splitlines()
+                if line.strip()
+            }
+
         except Exception as e:
             logger.error("Error downloading feeds file: %s", e)
             return set()
-    
+
     def enqueue_new_feed_entries(self, max_workers: int = MAX_WORKERS):
         logger.info("Clearing SQS queue before enqueuing new feeds")
         self.sqs_queue.purge_queue()
-        
+
         feeds = self.get_smallweb_feeds()
         if not feeds or len(feeds) == 0:
             logger.error("No feeds found to process")
@@ -146,14 +156,16 @@ class Scraper:
         # feeds = list(feeds)[6000:6005] # subset for testing
 
         self.existing_stripped_urls = self.get_existing_and_skipped_urls()
-        
-        logger.info("\nProcessing %d feeds with %d worker threads\n", len(feeds), max_workers)
-        
+
+        logger.info(
+            "\nProcessing %d feeds with %d worker threads\n", len(feeds), max_workers
+        )
+
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             executor.map(self.process_feed, feeds)
-            
+
         logger.info("All feeds processed")
-    
+
     def get_existing_and_skipped_urls(self) -> dict[str, int]:
         """Get all existing and skipped urls from the db as stripped"""
         existing_urls: dict[str, int] = {}
@@ -175,24 +187,24 @@ class Scraper:
                 cursor.close()
         except (Exception, Error) as error:
             logger.error("Error fetching existing URLs: %s", error)
-        
+
         logger.info("Fetched %d existing URLs from database", len(existing_urls))
         return existing_urls
-    
+
     def get_stripped_url(self, url: str) -> str:
         """Return URL without http(s)://, www., query params, or trailing slash"""
-        return re.sub(r'^(https?://)?(www\.)?', '', url).split('?')[0].rstrip('/')
+        return re.sub(r"^(https?://)?(www\.)?", "", url).split("?")[0].rstrip("/")
 
     def process_feed(self, feed):
         """Process a single feed, extract new urls and enqueue them"""
-        #logger.info("Processing feed: %s", feed)
-        try:  
+        # logger.info("Processing feed: %s", feed)
+        try:
             parsed_feed = fastfeedparser.parse(feed)
             link = parsed_feed.feed.link
             if not link:
-                logger.warning("Feed link %s not found", feed) 
+                logger.warning("Feed link %s not found", feed)
                 return
-            #logger.info("Found %d entries for feed %s", len(parsed_feed.entries), feed)
+            # logger.info("Found %d entries for feed %s", len(parsed_feed.entries), feed)
         except Exception as e:
             logger.error("Error parsing feed %s: %s", feed, e)
             return
@@ -200,8 +212,8 @@ class Scraper:
         candidate_urls = set()
         try:
             for entry in parsed_feed.entries:
-                if hasattr(entry, 'link'):
-                    entry_link = clean_url(entry.link)  
+                if hasattr(entry, "link"):
+                    entry_link = clean_url(entry.link)
                     if not entry_link or not is_valid_url(entry_link):
                         logger.debug("Skipping invalid URL: %s", entry.link)
                         continue
@@ -212,7 +224,7 @@ class Scraper:
         except Exception as e:
             logger.error("Error processing feed entries %s: %s", feed, e)
             return
-            
+
         if not candidate_urls:
             logger.info("No valid URLs found for feed %s", link)
             return
@@ -223,114 +235,152 @@ class Scraper:
         existing_urls = set(self.check_urls_already_exist(candidate_urls))
         logger.debug("Existing URLs (first 5): %s", list(existing_urls)[:5])
         new_urls = candidate_urls - existing_urls
-        logger.debug("Candidate/Existing/New counts: %d / %d / %d", len(candidate_urls), len(existing_urls), len(new_urls))
+        logger.debug(
+            "Candidate/Existing/New counts: %d / %d / %d",
+            len(candidate_urls),
+            len(existing_urls),
+            len(new_urls),
+        )
 
-        logger.info("Found %d/%d new URLs (limit 30) for feed %s", len(new_urls), len(candidate_urls), feed)
+        logger.info(
+            "Found %d/%d new URLs (limit 30) for feed %s",
+            len(new_urls),
+            len(candidate_urls),
+            feed,
+        )
         if new_urls and len(new_urls) > 0:
             limited_urls = list(new_urls)[:30]  # to avoid too large message size
             self.sqs_queue.send_message(limited_urls)
-            logger.info("Sent %d new URLs from %s to the queue", len(limited_urls), link)
+            logger.info(
+                "Sent %d new URLs from %s to the queue", len(limited_urls), link
+            )
 
     def check_urls_already_exist(self, urls: set) -> set:
         """Check which urls alreay exist in the database"""
         for url in urls:
             if self.get_stripped_url(clean_url(url)) in self.existing_stripped_urls:
                 yield url
-    
+
     def is_blog_post_url(self, url: str) -> bool:
         """Basic check if a url follow known non-blog patterns"""
+        if re.search(r"^https?://localhost", url, re.IGNORECASE):
+            return False
+        if re.search(r"^https?://0\.0\.0\.0", url, re.IGNORECASE):
+            return False
+
         non_blog_patterns = [
-            r'^.*/(about|links|tags|categories|archive|comic|contact)(/.*)?$',  
-            r'^.*/(author|tag|category)/[^/]+(/.*)?$',                    
-            r'^.*/(tag|category)(/.*)?$'                                   
+            r"^.*/(about|links|tags|categories|archive|comic|contact)(/.*)?$",
+            r"^.*/(author|tag|category)/[^/]+(/.*)?$",
+            r"^.*/(tag|category)(/.*)?$",
         ]
-        
+
         for pattern in non_blog_patterns:
             if re.search(pattern, url, re.IGNORECASE):
                 return False
-        
+
         return True
-    
+
     def scrape(self, max_workers: int = MAX_WORKERS):
         """Scrape all urls from the queue and save them to the database, multithreaded"""
         logger.info("Starting scrape with %d worker threads", max_workers)
-        
+
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             for _ in range(max_workers):
                 executor.submit(self.process_message_from_queue)
-            
+
             executor.shutdown(wait=True)
-            
+
         logger.info("Scraping complete - no more messages in queue")
-    
+
     def process_message_from_queue(self):
         """Process messages from the queue until the queue is empty."""
         logger.info("Message processor started")
-        
+
         while True:
             message = self.sqs_queue.receive_message()
             if not message:
                 logger.info("No more messages in queue, exiting")
-                return  
-            
+                return
+
             try:
                 self.process_single_message(message)
             except Exception as e:
                 logger.error("Error processing message: %s", e)
                 sleep(3)
-    
+
     def process_single_message(self, message):
-        """Process a single message from the queue.""" 
+        """Process a single message from the queue."""
         try:
-            receipt_handle = message['ReceiptHandle']
-            body = json.loads(message['Body'])
-            urls = body['urls']
-            
-            #logger.info("Processing message with %d URLs", len(urls))
-            
+            receipt_handle = message["ReceiptHandle"]
+            body = json.loads(message["Body"])
+            urls = body["urls"]
+
+            # logger.info("Processing message with %d URLs", len(urls))
+
             visibility_timeout = self.calculate_visibility_timeout(len(urls))
             self.sqs_queue.change_message_visibility(receipt_handle, visibility_timeout)
-            
+
             # Check robots.txt once for domain
             robot_parser = None
             domain_url = get_base_url(urls[0])
             robot_parser = self.check_robots_for_domain(domain_url)
-            urls_to_scrape = [url for url in urls if self.robots_allows_scraping(robot_parser, url)]
+            urls_to_scrape = [
+                url for url in urls if self.robots_allows_scraping(robot_parser, url)
+            ]
             if not urls_to_scrape or len(urls_to_scrape) == 0:
-                logger.info("No URLs allowed by robots.txt for domain %s, deleting message", domain_url)
+                logger.info(
+                    "No URLs allowed by robots.txt for domain %s, deleting message",
+                    domain_url,
+                )
                 self.sqs_queue.delete_message(receipt_handle)
                 return
 
-            logger.info("Processing %d new URLs for %s (%d original URLs, %d blocked by robots.txt)", 
-                       len(urls_to_scrape), domain_url, len(urls), len(urls) - len(urls_to_scrape))
-            
+            logger.info(
+                "Processing %d new URLs for %s (%d original URLs, %d blocked by robots.txt)",
+                len(urls_to_scrape),
+                domain_url,
+                len(urls),
+                len(urls) - len(urls_to_scrape),
+            )
+
             error_count = 0
             consecutive_errors = 0
             sleep_time = 4
-            
+
             for url in urls_to_scrape:
                 if error_count >= 4:
-                    logger.error("Too many errors for %s, skipping and deleting message for", get_base_url(url))
+                    logger.error(
+                        "Too many errors for %s, skipping and deleting message for",
+                        get_base_url(url),
+                    )
                     self.sqs_queue.delete_message(receipt_handle)
                     return
-                
+
                 if consecutive_errors >= 2:
-                    logger.error("Too many consecutive errors for %s, backing off", get_base_url(url))
+                    logger.error(
+                        "Too many consecutive errors for %s, backing off",
+                        get_base_url(url),
+                    )
                     sleep(sleep_time * 2)
-                
+
                 try:
                     self.scrape_url(url)
-                    consecutive_errors = 0  
+                    consecutive_errors = 0
                 except Exception as e:
                     error_count += 1
                     consecutive_errors += 1
-                    logger.error("Error scraping %s (consecutive: %d): %s", url, consecutive_errors, e)
-                
-                sleep(sleep_time)  
+                    logger.error(
+                        "Error scraping %s (consecutive: %d): %s",
+                        url,
+                        consecutive_errors,
+                        e,
+                    )
+
+                sleep(sleep_time)
 
             self.sqs_queue.delete_message(receipt_handle)
             logger.info("Deleted message after processing all URLs")
-            
+
         except Exception as e:
             logger.error("Error processing message: %s", e)
 
@@ -348,12 +398,14 @@ class Scraper:
             logger.info("Loaded robots.txt for %s", domain_url)
             return rp
         except Exception as e:
-            logger.warning("Error fetching robots.txt for %s (allowing all): %s", domain_url, e)
+            logger.warning(
+                "Error fetching robots.txt for %s (allowing all): %s", domain_url, e
+            )
             permissive_rp = RobotFileParser()
             permissive_rp.set_url(robots_url)
             permissive_rp.parse([])
             return permissive_rp
-    
+
     def robots_allows_scraping(self, robot_parser: RobotFileParser, url: str) -> bool:
         """Check if robots.txt allows scraping for a specific URL"""
         return robot_parser.can_fetch("BlogSearchBot", url)
@@ -367,33 +419,35 @@ class Scraper:
         except Exception as e:
             logger.error("Error downloading content for %s: %s", url, e)
             raise e
-        
+
         if not downloaded_content:
             logger.warning("Failed to download content for %s", url)
             raise Exception("Failed to download content for %s", url)
-        
+
         if not trafilatura.readability_lxml.is_probably_readerable(downloaded_content):
             logger.warning("Downloaded content for %s is not readerable", url)
             self.record_skipped_url(url, "not_readerable")
             return
-        
-        extracted = trafilatura.extract(downloaded_content, output_format='json', with_metadata=True)
+
+        extracted = trafilatura.extract(
+            downloaded_content, output_format="json", with_metadata=True
+        )
         if not extracted:
             logger.warning("Failed to extract text for %s", url)
             return
-        
+
         extracted_dict = json.loads(extracted)
-        if len(extracted_dict['raw_text'].split()) < 100:
+        if len(extracted_dict["raw_text"].split()) < 100:
             logger.warning("Extracted text for %s is too short", url)
             self.record_skipped_url(url, "too_short")
             return
-        
+
         page = {
-            'title': extracted_dict['title'],
-            'url': clean_url(extracted_dict['url']),  
-            'fingerprint': extracted_dict['fingerprint'],
-            'date': extracted_dict['date'],
-            'text': extracted_dict['raw_text']
+            "title": extracted_dict["title"],
+            "url": clean_url(extracted_dict["url"]),
+            "fingerprint": extracted_dict["fingerprint"],
+            "date": extracted_dict["date"],
+            "text": extracted_dict["raw_text"],
         }
         logger.info("Attempting to save page: %s", url)
         self.save_page(page)
@@ -415,7 +469,7 @@ class Scraper:
                         ON CONFLICT (stripped_url) DO UPDATE
                             SET reason = EXCLUDED.reason
                     """,
-                    (stripped_url, reason)
+                    (stripped_url, reason),
                 )
                 conn.commit()
                 cursor.close()
@@ -432,8 +486,9 @@ class Scraper:
             with self.db_connection() as conn:
                 cursor = conn.cursor()
                 # Use ON CONFLICT to handle duplicate URLs gracefully
-                cursor.execute("""
-                    INSERT INTO pages (title, url, fingerprint, date, text) 
+                cursor.execute(
+                    """
+                    INSERT INTO pages (title, url, fingerprint, date, text)
                     VALUES (%s, %s, %s, %s, %s)
                     ON CONFLICT (url) DO UPDATE
                         SET title = EXCLUDED.title,
@@ -442,46 +497,61 @@ class Scraper:
                             text = EXCLUDED.text,
                             scraped_on_date = CURRENT_TIMESTAMP
                     RETURNING id
-                """, (page['title'], page['url'], page['fingerprint'], page['date'], page['text']))
-                
+                """,
+                    (
+                        page["title"],
+                        page["url"],
+                        page["fingerprint"],
+                        page["date"],
+                        page["text"],
+                    ),
+                )
+
                 result = cursor.fetchone()
                 if result:
                     page_id = result[0]
                     db_saved = True
-                    logger.info("Successfully saved/updated page: %s", page['url'])
+                    logger.info("Successfully saved/updated page: %s", page["url"])
                 conn.commit()
-                
+
                 # Add to Meilisearch if DB save was successful and client is available
                 if db_saved and self.meilisearch_client:
                     self.index_page_in_meilisearch(page, page_id)
-                    
+
         except Error as error:
             # Check if it's a fingerprint duplicate error
-            if 'fingerprint' in str(error) and 'duplicate' in str(error).lower():
-                logger.info("Page with identical fingerprint already exists; skipping URL: %s", page['url'])
+            if "fingerprint" in str(error) and "duplicate" in str(error).lower():
+                logger.info(
+                    "Page with identical fingerprint already exists; skipping URL: %s",
+                    page["url"],
+                )
             else:
-                logger.error("Error saving page %s: %s", page['url'], error)
+                logger.error("Error saving page %s: %s", page["url"], error)
 
     def index_page_in_meilisearch(self, page: dict, page_id: int):
         """Index a page in Meilisearch with error handling"""
         if not self.meilisearch_client:
             return
-            
+
         try:
             document = {
-                'id': str(page_id),  
-                'title': page['title'] or '',
-                'url': page['url'] or '',
-                'date': page.get('date') or None,
-                'text': page['text'] or ''
+                "id": str(page_id),
+                "title": page["title"] or "",
+                "url": page["url"] or "",
+                "date": page.get("date") or None,
+                "text": page["text"] or "",
             }
-            
-            index = self.meilisearch_client.index('pages')
+
+            index = self.meilisearch_client.index("pages")
             task = index.add_documents([document])
-            logger.debug("Added page to Meilisearch search index: %s (task: %s)", page['url'], task.task_uid)
-            
+            logger.debug(
+                "Added page to Meilisearch search index: %s (task: %s)",
+                page["url"],
+                task.task_uid,
+            )
+
         except Exception as e:
-            logger.warning("Failed to index page in Meilisearch %s: %s", page['url'], e)
+            logger.warning("Failed to index page in Meilisearch %s: %s", page["url"], e)
 
     def tmp(self):
         pass
@@ -504,7 +574,7 @@ class Scraper:
 
 if __name__ == "__main__":
     scraper = Scraper()
-    
+
     if len(sys.argv) > 1:
         command = sys.argv[1]
         if command == "enqueue":
@@ -525,4 +595,3 @@ if __name__ == "__main__":
             logger.info("Available commands: enqueue, process, run, tmp")
     else:
         logger.info("Available commands: enqueue, process, run, tmp")
-

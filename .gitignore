@@ -23,3 +23,6 @@ compose.yml
 dev.sh
 compose.dev.yml
 CLAUDE.md
+AGENTS.md
+meilisearch_tester.html
+semantic_ratio_explorer.html

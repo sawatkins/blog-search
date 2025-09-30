@@ -1,12 +1,13 @@
-from typing import Any, Dict
-from dotenv import load_dotenv
-import re
 import os
-import sys
 import random
-from psycopg2 import Error
-from psycopg2 import pool
+import re
+import sys
+from typing import Any, Dict
+
+from dotenv import load_dotenv
 from meilisearch import Client as MeiliSearch
+from psycopg2 import Error, pool
+
 
 class SearchEngine:
     def __init__(self, use_meilisearch: bool = True):
@@ -22,15 +23,15 @@ class SearchEngine:
     def init_pool(self):
         try:
             self.connection_pool = pool.ThreadedConnectionPool(
-                minconn=3,  
-                maxconn=10, 
-                host=os.getenv('PGHOST'),
-                database=os.getenv('PGDATABASE'),
-                user=os.getenv('PGUSER'),
-                password=os.getenv('PGPASSWORD'),
-                port=os.getenv('PGPORT', 5432),
-                sslmode=os.getenv('PGSSLMODE', 'prefer'),
-                channel_binding=os.getenv('PGCHANNELBINDING', 'prefer')
+                minconn=3,
+                maxconn=10,
+                host=os.getenv("PGHOST"),
+                database=os.getenv("PGDATABASE"),
+                user=os.getenv("PGUSER"),
+                password=os.getenv("PGPASSWORD"),
+                port=os.getenv("PGPORT", 5432),
+                sslmode=os.getenv("PGSSLMODE", "prefer"),
+                channel_binding=os.getenv("PGCHANNELBINDING", "prefer"),
             )
         except (Exception, Error) as error:
             print("Error while creating connection pool:", error)
@@ -64,8 +65,8 @@ class SearchEngine:
     def init_db(self):
         conn = self.get_connection()
         try:
-            filepath = os.path.join(os.path.dirname(__file__), '..', 'db', 'schema.sql')
-            with open(filepath, 'r') as f:
+            filepath = os.path.join(os.path.dirname(__file__), "..", "db", "schema.sql")
+            with open(filepath, "r") as f:
                 schema = f.read()
                 with conn.cursor() as cur:
                     cur.execute(schema)
@@ -80,7 +81,7 @@ class SearchEngine:
         conn = self.get_connection()
         try:
             with conn.cursor() as cursor:
-                cursor.execute('SELECT COUNT(*) FROM pages')
+                cursor.execute("SELECT COUNT(*) FROM pages")
                 result = cursor.fetchone()
                 return result[0] if result else 0
         finally:
@@ -88,8 +89,12 @@ class SearchEngine:
 
     def clean_text(self, text):
         if text is None:
-            return ''
-        return re.sub(r'\s+', ' ', text.replace('\n', ' '), flags=re.MULTILINE).strip().lower()
+            return ""
+        return (
+            re.sub(r"\s+", " ", text.replace("\n", " "), flags=re.MULTILINE)
+            .strip()
+            .lower()
+        )
 
     def search(self, query) -> list[dict]:
         conn = self.get_connection()
@@ -97,7 +102,7 @@ class SearchEngine:
             query_words = self.clean_text(query)
             if not query_words:
                 return []
-            
+
             with conn.cursor() as cursor:
                 sql = """
                     WITH search_query AS (
@@ -115,7 +120,7 @@ class SearchEngine:
                     SELECT pages.id, ts_rank_cd(pages.page_tsv, search_query.q) AS score
                     FROM pages
                     JOIN hit_ids ON hit_ids.id = pages.id
-                    JOIN search_query ON TRUE 
+                    JOIN search_query ON TRUE
                     ORDER BY score DESC
                     LIMIT 200
                     )
@@ -132,32 +137,33 @@ class SearchEngine:
                 """
                 cursor.execute(sql, (query_words,))
                 results = cursor.fetchall()
-                
+
                 return [
                     {
-                        'title': row[0],
-                        'url': row[1].rstrip("/"),
-                        'date': row[2],
-                        'text': row[3]
+                        "title": row[0],
+                        "url": row[1].rstrip("/"),
+                        "date": row[2],
+                        "text": row[3],
                     }
                     for row in results
                 ]
         finally:
             self.release_connection(conn)
-    
+
     def init_meilisearch(self):
         self.meilisearch_client = MeiliSearch(
-            url=os.getenv('MEILISEARCH_URL'),
-            api_key=os.getenv('MEILISEARCH_API_KEY')
+            url=os.getenv("MEILISEARCH_URL"), api_key=os.getenv("MEILISEARCH_API_KEY")
         )
-    
+
     def search_meilisearch(self, query: str) -> Dict[str, Any]:
         if self.meilisearch_client is None:
             self.init_meilisearch()
         query_words = self.clean_text(query)
         if not query_words:
-            return {'results': [], 'results_size': 0, 'search_time': 0}
-        results = self.meilisearch_client.index('pages').search(query_words, {'limit': 24})
+            return {"results": [], "results_size": 0, "search_time": 0}
+        results = self.meilisearch_client.index("pages").search(
+            query_words, {"limit": 24}
+        )
         return self._format_meilisearch_response(results)
 
     def search_meilisearch_hybrid(self, query: str) -> Dict[str, Any]:
@@ -165,46 +171,42 @@ class SearchEngine:
             self.init_meilisearch()
         query_words = self.clean_text(query)
         if not query_words:
-            return {'results': [], 'results_size': 0, 'search_time': 0}
-        results = self.meilisearch_client.index('pages').search(
+            return {"results": [], "results_size": 0, "search_time": 0}
+        results = self.meilisearch_client.index("pages").search(
             query_words,
-            {
-                'limit': 24,
-                'hybrid': {
-                    'semanticRatio': 0.75,
-                    'embedder': 'default'
-                }
-            }
+            {"limit": 24, "hybrid": {"semanticRatio": 0.75, "embedder": "default"}},
         )
         return self._format_meilisearch_response(results)
 
     def _format_meilisearch_response(self, results: Dict[str, Any]) -> Dict[str, Any]:
-        hits = results.get('hits', [])
+        hits = results.get("hits", [])
         return {
-            'results': [
+            "results": [
                 {
-                    'title': hit.get('title', ''),
-                    'url': hit.get('url', '').rstrip('/'),
-                    'date': hit.get('date', ''),
-                    'text': ' '.join(hit.get('text', '').split(' ')[:300])
+                    "title": hit.get("title", ""),
+                    "url": hit.get("url", "").rstrip("/"),
+                    "date": hit.get("date", ""),
+                    "text": " ".join(hit.get("text", "").split(" ")[:300]),
                 }
                 for hit in hits
             ],
-            'results_size': results.get('estimatedTotalHits', 0),
-            'search_time': results.get('processingTimeMs', 0)
+            "results_size": results.get("estimatedTotalHits", 0),
+            "search_time": results.get("processingTimeMs", 0),
         }
-    
+
     def get_latest_posts(self) -> list[dict]:
         conn = self.get_connection()
         try:
             with conn.cursor() as cursor:
-                cursor.execute("SELECT title, url, date, text FROM pages WHERE date IS NOT NULL ORDER BY date DESC LIMIT 24")
+                cursor.execute(
+                    "SELECT title, url, date, text FROM pages WHERE date IS NOT NULL ORDER BY date DESC LIMIT 24"
+                )
                 return [
                     {
-                        'title': row[0],
-                        'url': row[1].rstrip("/"),
-                        'date': row[2],
-                        'text': row[3]
+                        "title": row[0],
+                        "url": row[1].rstrip("/"),
+                        "date": row[2],
+                        "text": row[3],
                     }
                     for row in cursor.fetchall()
                 ]
@@ -216,14 +218,21 @@ class SearchEngine:
         try:
             random_id = random.randint(1, self.size)
             with conn.cursor() as cursor:
-                cursor.execute("SELECT title, url, date, text FROM pages WHERE id = %s LIMIT 1", (random_id,))
+                cursor.execute(
+                    "SELECT title, url, date, text FROM pages WHERE id = %s LIMIT 1",
+                    (random_id,),
+                )
                 row = cursor.fetchone()
-                return {
-                    'title': row[0],
-                    'url': row[1].rstrip("/"),
-                    'date': row[2],
-                    'text': row[3]
-                } if row else None
+                return (
+                    {
+                        "title": row[0],
+                        "url": row[1].rstrip("/"),
+                        "date": row[2],
+                        "text": row[3],
+                    }
+                    if row
+                    else None
+                )
         finally:
             self.release_connection(conn)
 
@@ -233,7 +242,7 @@ class SearchEngine:
             with conn.cursor() as cursor:
                 cursor.execute(
                     "INSERT INTO query_logs (query, ip_address, user_agent) VALUES (%s, %s, %s)",
-                    (query, ip_address, user_agent)
+                    (query, ip_address, user_agent),
                 )
                 conn.commit()
         except Exception as e:
@@ -241,18 +250,19 @@ class SearchEngine:
         finally:
             self.release_connection(conn)
 
+
 if __name__ == "__main__":
     engine = SearchEngine()
-    
+
     try:
         while True:
             query = input("Enter your search query (or 'quit' to exit): ")
-            if query.lower() == 'quit':
+            if query.lower() == "quit":
                 break
-            
+
             results = engine.search(query)
             print(f"\nFound {len(results)} results:")
-            for post in results[:24]:  
+            for post in results[:24]:
                 print(f"Title: {post['title']}")
                 print(f"URL: {post['url']}")
                 print(f"Date: {post['date']}")
