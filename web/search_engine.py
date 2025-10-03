@@ -32,6 +32,7 @@ class SearchEngine:
                 port=os.getenv("PGPORT", 5432),
                 sslmode=os.getenv("PGSSLMODE", "prefer"),
                 channel_binding=os.getenv("PGCHANNELBINDING", "prefer"),
+                connect_timeout=10
             )
         except (Exception, Error) as error:
             print("Error while creating connection pool:", error)
@@ -216,23 +217,29 @@ class SearchEngine:
     def get_random_post(self) -> dict:
         conn = self.get_connection()
         try:
-            random_id = random.randint(1, self.size)
             with conn.cursor() as cursor:
-                cursor.execute(
-                    "SELECT title, url, date, text FROM pages WHERE id = %s LIMIT 1",
-                    (random_id,),
-                )
-                row = cursor.fetchone()
-                return (
-                    {
-                        "title": row[0],
-                        "url": row[1].rstrip("/"),
-                        "date": row[2],
-                        "text": row[3],
-                    }
-                    if row
-                    else None
-                )
+                cursor.execute("SELECT MAX(id) FROM pages")
+                max_id = cursor.fetchone()[0]
+
+                if not max_id:
+                    return {}
+
+                # Try up to 10 times to find a valid random ID
+                for _ in range(10):
+                    random_id = random.randint(1, max_id)
+                    cursor.execute(
+                        "SELECT title, url, date, text FROM pages WHERE id >= %s LIMIT 1",
+                        (random_id,),
+                    )
+                    row = cursor.fetchone()
+                    if row:
+                        return {
+                            "title": row[0],
+                            "url": row[1].rstrip("/"),
+                            "date": row[2],
+                            "text": row[3],
+                        }
+                return {}
         finally:
             self.release_connection(conn)
 
