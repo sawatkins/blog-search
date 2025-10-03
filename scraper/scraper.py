@@ -14,6 +14,7 @@ import requests
 import trafilatura
 from courlan import clean_url, get_base_url, is_valid_url
 from dotenv import load_dotenv
+from lxml import html
 from psycopg2 import Error, pool
 from meilisearch import Client as MeiliSearch
 
@@ -50,7 +51,6 @@ class Scraper:
         self.existing_stripped_urls = None
         self.meilisearch_client = None
         self.init_meilisearch()
-        self.setup_trafilatura_config()
 
     def init_pool(self):
         try:
@@ -87,28 +87,38 @@ class Scraper:
     def __del__(self):
         self.close_pool()
 
-    def setup_trafilatura_config(self):
-        config = trafilatura.settings.use_config()
+    def fetch_url_with_requests(self, url: str) -> str:
+        """Fetch URL content using requests library with custom user agent"""
+        headers = {
+            "User-Agent": "BlogSearchBot/1.0 (+https://blogsearch.io/bot)",
+        }
         try:
-            config.set(
-                "DEFAULT",
-                "USER_AGENTS",
-                "BlogSearchBot/1.0 (+https://blogsearch.io/bot)",
-            )
-            config.set("DEFAULT", "DOWNLOAD_TIMEOUT", "12")
-            trafilatura.settings.set_config(config)
-        except Exception:
-            logger.warning("Could not set trafilatura config options, using defaults")
+            response = requests.get(url, headers=headers, timeout=12)
+            response.raise_for_status()
+            return response.text
+        except Exception as e:
+            logger.error("Error fetching URL %s: %s", url, e)
+            raise e
 
     def init_meilisearch(self):
         """Initialize Meilisearch client with error handling"""
+        meili_url = os.getenv("MEILISEARCH_URL")
+        meili_key = os.getenv("MEILISEARCH_API_KEY")
+
+        if not meili_url or not meili_key:
+            logger.warning(
+                "MEILISEARCH_URL or MEILISEARCH_API_KEY not set, skipping Meilisearch"
+            )
+            self.meilisearch_client = None
+            return
+
         try:
             self.meilisearch_client = MeiliSearch(
-                url=os.getenv("MEILISEARCH_URL"),
-                api_key=os.getenv("MEILISEARCH_API_KEY"),
+                url=meili_url,
+                api_key=meili_key,
             )
             self.meilisearch_client.health()
-            logger.info("Connected to Meilisearch at %s", os.getenv("MEILISEARCH_URL"))
+            logger.info("Connected to Meilisearch at %s", meili_url)
         except Exception as e:
             logger.warning(
                 "Could not connect to Meilisearch (will skip indexing): %s", e
@@ -268,6 +278,9 @@ class Scraper:
         if re.search(r"^https?://0\.0\.0\.0", url, re.IGNORECASE):
             return False
 
+        if re.search(r"^https?://youtube.com", url, re.IGNORECASE):
+            return False
+
         non_blog_patterns = [
             r"^.*/(about|links|tags|categories|archive|comic|contact)(/.*)?$",
             r"^.*/(author|tag|category)/[^/]+(/.*)?$",
@@ -415,7 +428,7 @@ class Scraper:
         logger.info("Scraping URL: %s", url)
 
         try:
-            downloaded_content = trafilatura.fetch_url(url)
+            downloaded_content = self.fetch_url_with_requests(url)
         except Exception as e:
             logger.error("Error downloading content for %s: %s", url, e)
             raise e
@@ -424,13 +437,19 @@ class Scraper:
             logger.warning("Failed to download content for %s", url)
             raise Exception("Failed to download content for %s", url)
 
-        if not trafilatura.readability_lxml.is_probably_readerable(downloaded_content):
-            logger.warning("Downloaded content for %s is not readerable", url)
-            self.record_skipped_url(url, "not_readerable")
+        # Parse HTML and check if it's readerable
+        try:
+            parsed_tree = html.fromstring(downloaded_content)
+            if not trafilatura.readability_lxml.is_probably_readerable(parsed_tree):
+                logger.warning("Downloaded content for %s is not readerable", url)
+                self.record_skipped_url(url, "not_readerable")
+                return
+        except Exception as e:
+            logger.warning("Error parsing HTML for %s: %s", url, e)
             return
 
         extracted = trafilatura.extract(
-            downloaded_content, output_format="json", with_metadata=True
+            downloaded_content, output_format="json", with_metadata=True, url=url
         )
         if not extracted:
             logger.warning("Failed to extract text for %s", url)
@@ -481,7 +500,7 @@ class Scraper:
 
     def save_page(self, page: dict):
         """Save a page to the database and index in Meilisearch"""
-        db_saved = False
+        page_id = None
         try:
             with self.db_connection() as conn:
                 cursor = conn.cursor()
@@ -510,13 +529,12 @@ class Scraper:
                 result = cursor.fetchone()
                 if result:
                     page_id = result[0]
-                    db_saved = True
                     logger.info("Successfully saved/updated page: %s", page["url"])
                 conn.commit()
 
-                # Add to Meilisearch if DB save was successful and client is available
-                if db_saved and self.meilisearch_client:
-                    self.index_page_in_meilisearch(page, page_id)
+            # Add to Meilisearch if DB save was successful and client is available
+            if page_id and self.meilisearch_client:
+                self.index_page_in_meilisearch(page, page_id)
 
         except Error as error:
             # Check if it's a fingerprint duplicate error
@@ -544,8 +562,8 @@ class Scraper:
 
             index = self.meilisearch_client.index("pages")
             task = index.add_documents([document])
-            logger.debug(
-                "Added page to Meilisearch search index: %s (task: %s)",
+            logger.info(
+                "Added page to Meilisearch index: %s (task: %s)",
                 page["url"],
                 task.task_uid,
             )
