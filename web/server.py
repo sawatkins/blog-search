@@ -157,18 +157,9 @@ async def api_search(q: str = Query(...)):
         return JSONResponse({"results": []})
 
     try:
-        results = search_engine.search(query)
-        api_results = []
-        for result in results[:24]:
-            api_results.append(
-                {
-                    "url": result["url"] if "url" in result else "",
-                    "title": result["title"] if "title" in result else "",
-                    "date": result["date"] if "date" in result else "",
-                    "snippet": result["text"][:100] if "text" in result else "",
-                }
-            )
-        return JSONResponse({"results": api_results})
+        response = search_engine.search_meilisearch(query)
+        results = response.get("results", [])
+        return JSONResponse({"results": results})
     except Exception as e:
         print(f"An error occurred: {str(e)}")
         raise HTTPException(status_code=500, detail="Internal server error: " + str(e))
