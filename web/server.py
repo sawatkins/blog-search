@@ -32,6 +32,7 @@ async def api(request: Request):
         "about.html",
         {
             "request": request,
+            "posts_size": search_engine.size,
         },
     )
 
@@ -42,6 +43,7 @@ async def privacy(request: Request):
         "privacy.html",
         {
             "request": request,
+            "posts_size": search_engine.size,
         },
     )
 
@@ -52,6 +54,7 @@ async def about(request: Request):
         "api.html",
         {
             "request": request,
+            "posts_size": search_engine.size,
         },
     )
 
@@ -62,6 +65,7 @@ async def bot(request: Request):
         "bot.html",
         {
             "request": request,
+            "posts_size": search_engine.size,
         },
     )
 
@@ -120,6 +124,7 @@ async def search_page(
             "results_size": response.get("results_size", len(results)),
             "page": response.get("page", 1),
             "total_pages": response.get("total_pages", 1),
+            "posts_size": search_engine.size,
         },
     )
 
@@ -140,6 +145,7 @@ async def latest(request: Request):
             "results_size": len(results),
             "page": 1,
             "total_pages": 1,
+            "posts_size": search_engine.size,
         },
     )
 
@@ -160,6 +166,7 @@ async def random(request: Request):
             "results_size": 1 if result else 0,
             "page": 1,
             "total_pages": 1,
+            "posts_size": search_engine.size,
         },
     )
 

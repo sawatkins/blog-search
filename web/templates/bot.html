@@ -3,16 +3,32 @@
 {% block title %}Bot - Blog Search{% endblock %}
 
 {% block content %}
-<div class="w-full">
-    <h3 class="text-lg font-medium mb-4">Blog Search Bot</h3>
+<div class="max-w-2xl mx-auto">
+    <h1 class="text-lg font-semibold mb-4" style="color: var(--text-primary);">BlogSearchBot</h1>
+    
+    <div class="space-y-4 text-sm" style="color: var(--text-secondary);">
+        <div>
+            <h2 class="font-medium mb-1" style="color: var(--text-primary);">What is it?</h2>
+            <p>
+                BlogSearchBot is the web crawler that indexes blog posts for this search engine. 
+                It discovers new posts through RSS feeds and runs daily.
+            </p>
+        </div>
         
-    <div class="space-y-3 text-sm">
-        <h3 class="font-medium text-md mb-1">What is BlogSearchBot?</h3>
-        <p>BlogSearchBot is the web scraper for this search engine. Urls to scrape are added from the blog's rss feed. It runs once a day and respects robots.txt.</p>
+        <div>
+            <h2 class="font-medium mb-1" style="color: var(--text-primary);">Behavior</h2>
+            <ul class="list-disc pl-5 space-y-1">
+                <li>Respects <code class="text-xs px-1 py-0.5 rounded" style="background: var(--bg-secondary);">robots.txt</code></li>
+                <li>Identifies as <code class="text-xs px-1 py-0.5 rounded" style="background: var(--bg-secondary);">BlogSearchBot</code></li>
+                <li>Rate-limited to avoid overwhelming servers</li>
+            </ul>
+        </div>
         
-        <h3 class="font-medium text-md mb-1">Contact</h3>
-        <p>If you thing the bot is misbehaving or have other comments, contact me at <a href="mailto:admin@blogsearch.io" class="text-[#bf616a] hover:underline visited:text-[#bf616a]">admin@blogsearch.io</a>.</p>
-        
+        <div class="pt-2 border-t" style="border-color: var(--border);">
+            <p class="text-xs" style="color: var(--text-muted);">
+                Issues? Contact <a href="mailto:admin@blogsearch.io" class="content-link">admin@blogsearch.io</a>
+            </p>
+        </div>
     </div>
 </div>
-{% endblock %} 
+{% endblock %}

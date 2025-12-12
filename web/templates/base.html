@@ -10,12 +10,10 @@
     <link rel="icon" type="image/x-icon" href="/favicon.ico">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Ubuntu:wght@300;400;500;700&display=swap" rel="stylesheet">
-    <link href="https://fonts.googleapis.com/css2?family=Ubuntu+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
     
     <!-- Prevent flash of wrong theme -->
     <script>
-        // Immediately set the theme based on user preference to prevent flash
         let isDark = localStorage.getItem('dark-theme');
         if (isDark === null) {
             isDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
@@ -30,294 +28,272 @@
 
     <style>
         :root {
-            --bg-primary: 255, 255, 255;
-            --bg-secondary: 243, 244, 246;
-            --input-bg: 249, 250, 251;
-            --text-primary: 68, 68, 68;
-            --text-secondary: 107, 114, 128;
-            --accent: 82, 113, 143;
-            --accent-hover: 64, 92, 120;
-            --border: 229, 231, 235;
-            --hover-bg: 243, 244, 246;
-            --shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
-            --code-bg: 243, 244, 246;
+            --bg-primary: #f8fafc;
+            --bg-secondary: #f1f5f9;
+            --bg-input: #e2e8f0;
+            --text-primary: #1e293b;
+            --text-secondary: #64748b;
+            --text-muted: #94a3b8;
+            --accent: #3b82f6;
+            --accent-hover: #2563eb;
+            --border: #e2e8f0;
+            --link-color: #3b82f6;
         }
 
         .dark {
-            --bg-primary: 22, 31, 49;
-            --bg-secondary: 30, 41, 59;
-            --input-bg: 42, 53, 71;
-            --text-primary: 226, 232, 240;
-            --text-secondary: 148, 163, 184;
-            --accent: 82, 113, 143;
-            --accent-hover: 110, 138, 167;
-            --border: 51, 65, 85;
-            --hover-bg: 42, 53, 71;
-            --shadow: 0 1px 3px 0 rgb(0 0 0 / 0.4), 0 1px 2px -1px rgb(0 0 0 / 0.4);
-            --code-bg: 42, 53, 71;
+            --bg-primary: #111827;
+            --bg-secondary: #1f2937;
+            --bg-input: #374151;
+            --text-primary: #f9fafb;
+            --text-secondary: #9ca3af;
+            --text-muted: #6b7280;
+            --border: #374151;
+            --link-color: #60a5fa;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        html {
+            font-family: 'Inter', system-ui, sans-serif;
         }
 
         body {
-            font-family: 'Ubuntu', sans-serif;
-            font-size: 15px;
-            color: rgb(var(--text-primary));
-            line-height: 1.45;
-            background-color: rgb(var(--bg-secondary));
-            transition: background-color 0.2s ease, color 0.2s ease;
-        }
-
-        .bg-white {
-            background-color: rgb(var(--bg-primary));
-            transition: background-color 0.2s ease;
-        }
-
-        .text-gray-700 {
-            color: rgb(var(--text-primary));
-            transition: color 0.2s ease;
-        }
-
-        .text-gray-600 {
-            color: rgb(var(--text-secondary));
-            transition: color 0.2s ease;
-        }
-
-        .text-gray-500 {
-            color: rgb(var(--text-secondary));
-            transition: color 0.2s ease;
-        }
-
-        .border-gray-200 {
-            border-color: rgb(var(--border));
-            transition: border-color 0.2s ease;
-        }
-
-        .shadow-md {
-            box-shadow: var(--shadow);
-            transition: box-shadow 0.2s ease;
-        }
-
-        .bg-\[\#52718f\] {
-            background-color: rgb(var(--accent));
-            transition: background-color 0.05s ease;
-        }
-
-        .hover\:bg-\[\#405c78\]:hover {
-            background-color: rgb(var(--accent-hover));
-            transition: background-color 0.05s ease;
-        }
-
-        .hover\:text-\[\#52718f\]:hover {
-            color: rgb(var(--accent));
-            transition: color 0.05s ease;
-        }
-
-        article.hover\:bg-gray-50:hover {
-            background-color: rgb(var(--hover-bg));
-            transition: background-color 0.05s ease;
-        }
-
-        code,
-        pre,
-        .font-mono,
-        details summary {
-            font-family: 'Ubuntu Mono', monospace;
-        }
-
-        form input, form button {
-            font-size: 0.95rem;
-            padding: 0.4rem 0.7rem;
-        }
-
-        input[type="text"] {
-            background-color: rgb(var(--input-bg));
-            color: rgb(var(--text-primary));
-            border-color: rgb(var(--border));
-        }
-
-        details summary {
-            color: rgb(var(--accent));
-            cursor: pointer;
-        }
-        .ascii-art {
-            font-family: monospace;
-            white-space: pre;
-            line-height: 1.23;
-            letter-spacing: 0;
             font-size: 14px;
-            tab-size: 4;
-            display: block;
-            overflow-x: auto;
-            padding: 1em;
+            color: var(--text-primary);
+            background-color: var(--bg-primary);
+            transition: background-color 0.15s ease, color 0.15s ease;
+            line-height: 1.5;
         }
 
-        .loading-spinner {
-            display: inline-block;
-            width: 30px;
-            height: 30px;
-            border: 3px solid rgba(var(--text-secondary), 0.1);
-            border-radius: 50%;
-            border-top-color: rgb(var(--accent));
-            animation: spin 0.35s ease-in-out infinite;
+        .font-mono {
+            font-family: 'JetBrains Mono', monospace;
         }
 
+        code, pre, .ascii-art {
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        .ascii-art {
+            white-space: pre;
+            line-height: 1.2;
+            font-size: 13px;
+            color: var(--text-muted);
+        }
+
+        /* Search input styling */
+        .search-input {
+            background-color: var(--bg-input);
+            border: 1px solid var(--border);
+            color: var(--text-primary);
+            transition: all 0.15s ease;
+        }
+
+        .search-input:focus {
+            outline: none;
+            border-color: var(--accent);
+            box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
+        }
+
+        .search-input::placeholder {
+            color: var(--text-muted);
+        }
+
+        /* Result link styling */
+        .result-title {
+            color: var(--link-color);
+            transition: color 0.1s ease;
+        }
+
+        .result-title:hover {
+            text-decoration: underline;
+            text-underline-offset: 2px;
+        }
+
+        /* Code blocks */
         .code-block {
-            background-color: rgb(var(--code-bg));
-            transition: background-color 0.2s ease;
+            background-color: var(--bg-secondary);
+            border: 1px solid var(--border);
         }
 
-        input, button {
-            background-color: rgb(var(--bg-primary));
-            color: rgb(var(--text-primary));
-            border-color: rgb(var(--border));
-            transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease;
-        }
-
-        /* Theme toggle icon */
+        /* Theme toggle */
         .theme-toggle {
             cursor: pointer;
-            width: 24px;
-            height: 24px;
-            padding: 0;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            border-radius: 50%;
-            transition: all 0.05s ease;
-            color: rgb(var(--text-secondary));
+            color: var(--text-muted);
+            transition: color 0.1s ease;
         }
 
         .theme-toggle:hover {
-            color: rgb(var(--accent));
-            background-color: rgba(var(--text-secondary), 0.1);
+            color: var(--text-primary);
         }
 
-        .theme-toggle svg {
-            width: 18px;
-            height: 18px;
+        /* Nav links */
+        .nav-link {
+            color: var(--text-muted);
+            transition: color 0.1s ease;
         }
 
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
+        .nav-link:hover {
+            color: var(--text-primary);
+        }
+
+        /* Content link */
+        .content-link {
+            color: var(--link-color);
+            transition: color 0.1s ease;
+        }
+
+        .content-link:hover {
+            text-decoration: underline;
+        }
+
+        /* Pagination */
+        .page-btn {
+            background-color: var(--bg-secondary);
+            border: 1px solid var(--border);
+            color: var(--text-secondary);
+            transition: all 0.1s ease;
+        }
+
+        .page-btn:hover:not(.page-btn-disabled):not(.page-btn-active) {
+            background-color: var(--bg-input);
+            color: var(--text-primary);
+        }
+
+        .page-btn-active {
+            background-color: var(--accent);
+            border-color: var(--accent);
+            color: white;
+        }
+
+        .page-btn-disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        /* Scrollbar styling for dark mode */
+        .dark ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+
+        .dark ::-webkit-scrollbar-track {
+            background: var(--bg-primary);
+        }
+
+        .dark ::-webkit-scrollbar-thumb {
+            background: var(--border);
+            border-radius: 4px;
+        }
+
+        .dark ::-webkit-scrollbar-thumb:hover {
+            background: var(--text-muted);
         }
     </style>
     {% block head_extra %}{% endblock %}
 </head>
 
-<body class="mx-auto px-4 sm:px-6 lg:px-8 max-w-4xl flex flex-col min-h-screen">
-    <header class="bg-white rounded-md shadow-md mb-4 mt-4">
-        <div class="mx-auto max-w-screen-xl px-3 sm:px-4 lg:px-5">
-          <div class="flex h-12 items-center justify-between">
-            <div class="flex-1 md:flex md:items-center md:gap-12">
-              <a class="block" href="/"> 
-                <span class="sr-only">Home</span>
-                <div class="flex items-center">
-                    <img src="/static/img/sailboat.svg" alt="Blog Search logo" width="32"">
-                    <span class="ml-2 text-base font-medium text-gray-700">Blog Search</span>
-                </div>
-              </a>
-            </div>
+<body class="min-h-screen flex flex-col">
+    <!-- Header -->
+    <header class="border-b" style="border-color: var(--border); background-color: var(--bg-primary);">
+        <div class="max-w-3xl mx-auto px-4 py-3">
+            <div class="flex items-center justify-between">
+                <!-- Logo -->
+                <a href="/" class="flex items-center gap-2 nav-link hover:opacity-80">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="11" cy="11" r="8"></circle>
+                        <path d="m21 21-4.3-4.3"></path>
+                    </svg>
+                    <span class="font-mono text-sm font-medium" style="color: var(--text-primary);">blogsearch.io</span>
+                </a>
 
-            <div class="md:flex md:items-center md:gap-12">
-              <nav aria-label="Global" class="block">
-                <ul class="flex items-center gap-6 text-sm">
-                  <li>
-                    <a class="text-gray-600 transition-colors duration-[0.05s] hover:text-[#52718f] hover:underline" href="/about"> About </a>
-                  </li>
-
-                  <li>
-                    <a class="text-gray-600 transition-colors duration-[0.05s] hover:text-[#52718f] hover:underline" href="/api"> API </a>
-                  </li>
-                  
-                  <li>
-                    <button id="theme-toggle" class="theme-toggle" aria-label="Toggle dark mode">
-                      <!-- Sun icon -->
-                      <svg id="sun-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
-                      </svg>
-                      <!-- Moon icon -->
-                      <svg id="moon-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" class="hidden">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
-                      </svg>
+                <!-- Nav -->
+                <nav class="flex items-center gap-5">
+                    <a href="/about" class="nav-link text-sm">about</a>
+                    <a href="https://tally.so/r/w4kNkN" target="_blank" class="nav-link text-sm">add</a>
+                    <button id="theme-toggle" class="theme-toggle p-1" aria-label="Toggle dark mode">
+                        <!-- Sun icon (shown in dark mode) -->
+                        <svg id="sun-icon" xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 hidden" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <circle cx="12" cy="12" r="4"></circle>
+                            <path d="M12 2v2"></path>
+                            <path d="M12 20v2"></path>
+                            <path d="m4.93 4.93 1.41 1.41"></path>
+                            <path d="m17.66 17.66 1.41 1.41"></path>
+                            <path d="M2 12h2"></path>
+                            <path d="M20 12h2"></path>
+                            <path d="m6.34 17.66-1.41 1.41"></path>
+                            <path d="m19.07 4.93-1.41 1.41"></path>
+                        </svg>
+                        <!-- Moon icon (shown in light mode) -->
+                        <svg id="moon-icon" xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"></path>
+                        </svg>
                     </button>
-                  </li>
-                </ul>
-              </nav>
+                </nav>
             </div>
-          </div>
         </div>
-      </header>
+    </header>
 
-
-      <main class="flex-grow flex flex-col items-center"> 
-        <div class="w-full bg-white rounded-md shadow-md p-4">
-            {% block content %}
-            {% endblock %}
-        </div>
+    <!-- Main Content -->
+    <main class="flex-1 max-w-3xl w-full mx-auto px-4 py-6">
+        {% block content %}{% endblock %}
     </main>
 
-    <footer class="mt-4 mb-4 bg-white rounded-md shadow-md p-3 text-center">
-        <div class="flex justify-between items-center text-xs text-gray-500">
-            <span>&copy; 2025 blogsearch.io</span>
-            <div class="space-x-4">
-                <a href="https://status.blogsearch.io" class="text-gray-600 hover:text-[#52718f] hover:underline transition-colors duration-[0.05s]">Status</a>
-                <a href="/privacy" class="text-gray-600 hover:text-[#52718f] hover:underline transition-colors duration-[0.05s]">Privacy</a>
+    <!-- Footer -->
+    <footer class="border-t mt-auto" style="border-color: var(--border); background-color: var(--bg-primary);">
+        <div class="max-w-3xl mx-auto px-4 py-3">
+            <div class="flex items-center justify-between text-xs font-mono" style="color: var(--text-muted);">
+                <span>index: {{ posts_size|default('—') }} posts</span>
+                <div class="flex items-center gap-4">
+                    <a href="/api" class="nav-link">api</a>
+                    <a href="https://status.blogsearch.io" class="nav-link" target="_blank">status</a>
+                </div>
             </div>
         </div>
     </footer>
 
     <script>
-        // Theme toggle functionality
         const themeToggle = document.getElementById('theme-toggle');
         const sunIcon = document.getElementById('sun-icon');
         const moonIcon = document.getElementById('moon-icon');
         const htmlElement = document.documentElement;
         
-        // Function to set theme
         function setTheme(isDark) {
             if (isDark) {
                 htmlElement.classList.add('dark');
-                sunIcon.classList.add('hidden');
-                moonIcon.classList.remove('hidden');
-            } else {
-                htmlElement.classList.remove('dark');
                 sunIcon.classList.remove('hidden');
                 moonIcon.classList.add('hidden');
+            } else {
+                htmlElement.classList.remove('dark');
+                sunIcon.classList.add('hidden');
+                moonIcon.classList.remove('hidden');
             }
             localStorage.setItem('dark-theme', isDark ? 'true' : 'false');
         }
         
-        // Check user preference
         function getPreferredTheme() {
-            // Check localStorage first
             const storedTheme = localStorage.getItem('dark-theme');
             if (storedTheme !== null) {
                 return storedTheme === 'true';
             }
-            
-            // If no stored preference, check system preference
             return window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
         }
         
-        // Initialize theme
         setTheme(getPreferredTheme());
         
-        // Listen for toggle changes
         themeToggle.addEventListener('click', function() {
             setTheme(!htmlElement.classList.contains('dark'));
         });
         
-        // Listen for system preference changes
         window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', e => {
-            // Only change if user hasn't manually set a preference
             if (localStorage.getItem('dark-theme') === null) {
                 setTheme(e.matches);
             }
         });
     </script>
 
-    {% block scripts %}
-    {% endblock %}
+    {% block scripts %}{% endblock %}
 </body>
 
-</html> 
+</html>
