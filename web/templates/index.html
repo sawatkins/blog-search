@@ -7,11 +7,11 @@
     <!-- ASCII Sailboat -->
     <div class="flex justify-center mb-6">
         <pre class="ascii-art select-none">
-         v  ~.    v
-v           /|
-           / |          v
-    v     /__|__
-        \--------/
+             v  ~.    v
+    v           /|
+               / |          v
+        v     /__|__
+            \--------/
 ~^~^~^~^~^~^~`~~^~^~'~^~^~^~^~^~
     ~^~^~~~^~~~^~~~^~~~^~^~</pre>
     </div>
@@ -35,25 +35,21 @@ v           /|
     <!-- Description -->
     <div class="text-center space-y-4">
         <div class="space-y-2">
-            <p class="text-sm" style="color: var(--text-secondary);">
-                A search engine for personal blogs and independent writers.
+            <p class="text-sm font-ubuntu" style="color: var(--text-secondary);">
+                A search engine indexing personal blog content.
             </p>
-            <p class="text-sm" style="color: var(--text-secondary);">
-                Find authentic content from real people sharing their ideas.
+            <p class="text-sm font-ubuntu" style="color: var(--text-secondary);">
+                Find authentic content from real people.
             </p>
         </div>
 
         <!-- Quick Links -->
         <div class="flex items-center justify-center gap-4 pt-2">
-            <a href="/latest" class="content-link text-sm font-medium">latest posts</a>
+            <a href="/latest" class="quicklink text-sm font-medium font-ubuntu">latest posts</a>
             <span style="color: var(--text-muted);">•</span>
-            <a href="/random" class="content-link text-sm font-medium">random post</a>
+            <a href="/random" class="quicklink text-sm font-medium font-ubuntu">random post</a>
         </div>
 
-        <!-- Stats -->
-        <p class="text-xs font-mono pt-2" style="color: var(--text-muted);">
-            currently indexing <span style="color: var(--text-secondary);">{{ posts_size|default('—') }}</span> posts
-        </p>
     </div>
 </div>
 {% endblock %}

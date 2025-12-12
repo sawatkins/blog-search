@@ -44,13 +44,13 @@
                     
                     <!-- Title -->
                     <h3 class="mb-1">
-                        <a href="{{ post.url|default('#') }}" target="_blank" rel="noopener" class="result-title text-base font-medium">
+                        <a href="{{ post.url|default('#') }}" target="_blank" rel="noopener" class="result-title text-base font-medium font-ubuntu">
                             {{ post.title[:100] if post.title else 'Untitled' }}
                         </a>
                     </h3>
                     
                     <!-- Description -->
-                    <p class="text-sm leading-relaxed" style="color: var(--text-secondary);">
+                    <p class="text-sm leading-relaxed font-ubuntu" style="color: var(--text-secondary);">
                         {{ post.text[:280] + '...' if post.text and post.text|length > 280 else post.text or 'No description available.' }}
                     </p>
                 </article>

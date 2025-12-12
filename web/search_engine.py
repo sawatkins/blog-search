@@ -200,6 +200,7 @@ class SearchEngine:
             "offset": offset,
             "matchingStrategy": "all",  # All words must match for better precision
             "attributesToSearchOn": ["title", "text"],
+            "rankingScoreThreshold": 0.5,  # Filter out low-relevance results
         }
 
         if filters:
