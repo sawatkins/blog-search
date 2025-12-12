@@ -156,28 +156,101 @@ class SearchEngine:
             url=os.getenv("MEILISEARCH_URL"), api_key=os.getenv("MEILISEARCH_API_KEY")
         )
 
+    def parse_query(self, query: str) -> tuple[str, list[str]]:
+        """Parse query to extract filters like site:example.com"""
+        filters = []
+        parts = []
+        
+        # Split by space to find tokens
+        tokens = query.split()
+        for token in tokens:
+            if token.lower().startswith("site:"):
+                domain = token.split(":", 1)[1]
+                # Sanitize domain 
+                clean_domain = re.sub(r"[^a-zA-Z0-9\.\-_]", "", domain)
+                
+                if clean_domain:
+                    filters.append(f"domain = '{clean_domain}'")
+            else:
+                parts.append(token)
+                
+        clean_q = " ".join(parts)
+        return clean_q, filters
+
     def search_meilisearch(self, query: str) -> Dict[str, Any]:
         if self.meilisearch_client is None:
             self.init_meilisearch()
-        query_words = self.clean_text(query)
-        if not query_words:
+        
+        clean_query, filters = self.parse_query(query)
+        query_words = self.clean_text(clean_query)
+        
+        if not query_words and not filters:
             return {"results": [], "results_size": 0, "search_time": 0}
+            
+        search_params = {"limit": 24}
+        if filters:
+            search_params["filter"] = " AND ".join(filters)
+
         results = self.meilisearch_client.index("pages").search(
-            query_words, {"limit": 24}
+            query_words, search_params
         )
         return self._format_meilisearch_response(results)
 
     def search_meilisearch_hybrid(self, query: str) -> Dict[str, Any]:
         if self.meilisearch_client is None:
             self.init_meilisearch()
-        query_words = self.clean_text(query)
-        if not query_words:
+            
+        clean_query, filters = self.parse_query(query)
+        query_words = self.clean_text(clean_query)
+        
+        if not query_words and not filters:
             return {"results": [], "results_size": 0, "search_time": 0}
+            
+        # Fetch more results to group by URL manually
+        search_params = {
+            "limit": 100, 
+            "hybrid": {"semanticRatio": 0.75, "embedder": "default"},
+            "rankingScoreThreshold": 0.75
+        }
+        
+        if filters:
+            search_params["filter"] = " AND ".join(filters)
+            
         results = self.meilisearch_client.index("pages").search(
             query_words,
-            {"limit": 24, "hybrid": {"semanticRatio": 0.75, "embedder": "default"}},
+            search_params
         )
-        return self._format_meilisearch_response(results)
+        
+        return self._format_grouped_response(results)
+
+    def _format_grouped_response(self, results: Dict[str, Any]) -> Dict[str, Any]:
+        """Group results by URL and return top unique pages"""
+        hits = results.get("hits", [])
+        grouped_results = []
+        seen_urls = set()
+        
+        for hit in hits:
+            url = hit.get("url", "").rstrip("/")
+            if url in seen_urls:
+                continue
+            
+            # Add unique page to results
+            seen_urls.add(url)
+            grouped_results.append({
+                "title": hit.get("title", ""),
+                "url": url,
+                "date": hit.get("date", ""),
+                "text": hit.get("text", "")  # Return the full chunk text as the snippet
+            })
+            
+            if len(grouped_results) >= 24:
+                break
+                
+        return {
+            "results": grouped_results,
+            "results_size": results.get("estimatedTotalHits", 0),  # This is total chunks, not pages
+            "search_time": results.get("processingTimeMs", 0),
+        }
 
     def _format_meilisearch_response(self, results: Dict[str, Any]) -> Dict[str, Any]:
         hits = results.get("hits", [])

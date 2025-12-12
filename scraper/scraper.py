@@ -119,6 +119,24 @@ class Scraper:
             )
             self.meilisearch_client.health()
             logger.info("Connected to Meilisearch at %s", meili_url)
+
+            # Configure Index
+            index = self.meilisearch_client.index("pages")
+            index.update_filterable_attributes(["domain", "date", "url", "page_id"])
+            # Distinct attribute removed to allow multiple chunks per page to be returned
+            index.reset_distinct_attribute()
+            
+            # Configure Embedder (check if supported first or just try)
+            try:
+                index.update_embedders({
+                    "default": {
+                        "source": "huggingFace",
+                        "model": "sentence-transformers/all-MiniLM-L6-v2",
+                    }
+                })
+            except Exception as e:
+                logger.warning("Failed to update embedders (might be already configured or unsupported): %s", e)
+
         except Exception as e:
             logger.warning(
                 "Could not connect to Meilisearch (will skip indexing): %s", e
@@ -552,24 +570,102 @@ class Scraper:
             return
 
         try:
-            document = {
-                "id": str(page_id),
-                "title": page["title"] or "",
-                "url": page["url"] or "",
-                "date": page.get("date") or None,
-                "text": page["text"] or "",
-            }
+            text = page["text"] or ""
+            # Chunking
+            chunk_size = 1000
+            overlap = 200
+            chunks = []
+            if len(text) <= chunk_size:
+                chunks.append(text)
+            else:
+                start = 0
+                while start < len(text):
+                    end = start + chunk_size
+                    chunks.append(text[start:end])
+                    start += chunk_size - overlap
+            
+            domain = self.get_domain(page["url"])
+            documents = []
+            
+            for i, chunk in enumerate(chunks):
+                document = {
+                    "id": f"{page_id}_{i}",
+                    "page_id": page_id,
+                    "title": page["title"] or "",
+                    "url": page["url"] or "",
+                    "domain": domain,
+                    "date": page.get("date") or None,
+                    "text": chunk,
+                }
+                documents.append(document)
 
             index = self.meilisearch_client.index("pages")
-            task = index.add_documents([document])
+            task = index.add_documents(documents)
             logger.info(
-                "Added page to Meilisearch index: %s (task: %s)",
+                "Added page to Meilisearch index: %s (%d chunks, task: %s)",
                 page["url"],
+                len(documents),
                 task.task_uid,
             )
 
         except Exception as e:
             logger.warning("Failed to index page in Meilisearch %s: %s", page["url"], e)
+
+    def get_domain(self, url: str) -> str:
+        """Extract domain from URL"""
+        try:
+            base = get_base_url(url)
+            return re.sub(r"^https?://(www\.)?", "", base or "").split("/")[0]
+        except:
+            return ""
+
+
+    def reindex_all(self):
+        """Re-index all pages from the database to Meilisearch"""
+        if not self.meilisearch_client:
+            logger.error("Meilisearch not configured")
+            return
+
+        logger.info("Starting full re-indexing...")
+        
+        try:
+            # Delete all documents first as ID format changed
+            self.meilisearch_client.index("pages").delete_all_documents()
+            logger.info("Cleared existing documents")
+        except Exception as e:
+            logger.warning("Failed to clear documents: %s", e)
+
+        try:
+            with self.db_connection() as conn:
+                cursor = conn.cursor(name="reindex_cursor") # Server-side cursor for large datasets
+                cursor.itersize = 100
+                cursor.execute("SELECT count(*) FROM pages")
+                total = cursor.fetchone()[0]
+                logger.info("Found %d pages to re-index", total)
+                
+                cursor.execute("SELECT id, title, url, date, text, fingerprint FROM pages")
+                
+                count = 0
+                while True:
+                    rows = cursor.fetchmany(100)
+                    if not rows:
+                        break
+                    
+                    for row in rows:
+                        page = {
+                            "title": row[1],
+                            "url": row[2],
+                            "date": row[3],
+                            "text": row[4],
+                            "fingerprint": row[5]
+                        }
+                        self.index_page_in_meilisearch(page, row[0])
+                        count += 1
+                    
+                    logger.info("Indexed %d/%d pages", count, total)
+                            
+        except Exception as e:
+            logger.error("Error during re-indexing: %s", e)
 
     def tmp(self):
         pass
@@ -606,10 +702,13 @@ if __name__ == "__main__":
             scraper.enqueue_new_feed_entries()
             logger.info("Enqueue complete, starting processing...")
             scraper.scrape()
+        elif command == "reindex":
+            logger.info("Reindex all pages from the database to Meilisearch")
+            scraper.reindex_all()
         elif command == "tmp":
             scraper.tmp()
         else:
             logger.error("Unknown command: %s", command)
-            logger.info("Available commands: enqueue, process, run, tmp")
+            logger.info("Available commands: enqueue, process, run, reindex, tmp")
     else:
-        logger.info("Available commands: enqueue, process, run, tmp")
+        logger.info("Available commands: enqueue, process, run, reindex, tmp")
