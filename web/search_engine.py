@@ -58,7 +58,7 @@ class QueryParser:
         for domain in site_matches:
             clean_domain = re.sub(r"[^a-zA-Z0-9.\-_]", "", domain)
             if clean_domain:
-                filters.append(f"domain = '{clean_domain}'")
+                filters.append(f'domain = "{clean_domain}"')
 
         # Remove site: from query
         clean_query = QueryParser.SITE_FILTER_PATTERN.sub("", query)
@@ -126,6 +126,7 @@ class SearchEngine:
 
     DEFAULT_PER_PAGE = 6
     HYBRID_FETCH_LIMIT = 100  # Fetch more to dedupe by URL
+    RESULTS_LIMIT = 24  # Max results for PostgreSQL fallback and latest posts
 
     def __init__(self, use_meilisearch: bool = True):
         load_dotenv()
