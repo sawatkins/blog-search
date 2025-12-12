@@ -68,7 +68,10 @@ async def bot(request: Request):
 
 @app.get("/search", response_class=HTMLResponse)
 async def search_page(
-    request: Request, background_tasks: BackgroundTasks, q: str = Query(None)
+    request: Request,
+    background_tasks: BackgroundTasks,
+    q: str = Query(None),
+    page: int = Query(1, ge=1),
 ):
     query = q.strip() if q else ""
     results = []
@@ -93,12 +96,17 @@ async def search_page(
         results = search_engine.search(query)
         end_time = time.time()
         search_time = round(end_time - start_time, 2)
-        response = {"results_size": len(results)}
+        response = {
+            "results_size": len(results),
+            "page": 1,
+            "per_page": len(results),
+            "total_pages": 1,
+        }
     else:
         if search_mode == "keyword":
-            response = search_engine.search_meilisearch(query)
+            response = search_engine.search_meilisearch(query, page=page)
         else:
-            response = search_engine.search_meilisearch_hybrid(query)
+            response = search_engine.search_meilisearch_hybrid(query, page=page)
         search_time = round(response.get("search_time", 0) / 1000, 2)
         results = response.get("results", [])
 
@@ -110,6 +118,8 @@ async def search_page(
             "query": query,
             "time": search_time,
             "results_size": response.get("results_size", len(results)),
+            "page": response.get("page", 1),
+            "total_pages": response.get("total_pages", 1),
         },
     )
 
@@ -128,6 +138,8 @@ async def latest(request: Request):
             "query": "",
             "time": search_time,
             "results_size": len(results),
+            "page": 1,
+            "total_pages": 1,
         },
     )
 
@@ -146,20 +158,26 @@ async def random(request: Request):
             "query": "",
             "time": search_time,
             "results_size": 1 if result else 0,
+            "page": 1,
+            "total_pages": 1,
         },
     )
 
 
 @app.get("/api/search", response_class=JSONResponse)
-async def api_search(q: str = Query(...)):
+async def api_search(q: str = Query(...), page: int = Query(1, ge=1)):
     query = q.strip() if q else None
     if not query:
-        return JSONResponse({"results": []})
+        return JSONResponse({"results": [], "total": 0, "page": 1, "total_pages": 0})
 
     try:
-        response = search_engine.search_meilisearch(query)
-        results = response.get("results", [])
-        return JSONResponse({"results": results})
+        response = search_engine.search_meilisearch(query, page=page)
+        return JSONResponse({
+            "results": response.get("results", []),
+            "total": response.get("results_size", 0),
+            "page": response.get("page", 1),
+            "total_pages": response.get("total_pages", 0),
+        })
     except Exception as e:
         print(f"An error occurred: {str(e)}")
         raise HTTPException(status_code=500, detail="Internal server error: " + str(e))

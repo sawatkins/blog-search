@@ -19,23 +19,16 @@
     </form>
 
     <div id="search-results-container" class="w-full mx-auto">
-        <!-- <div class="flex items-center justify-between border-b border-gray-200 pb-3 mb-3">
-            <a class="text-gray-500 hover:text-[#52718f] transition-colors flex items-center text-sm" href="/">
-                <img src="/static/img/arrow-sm-left.svg" alt="Back" class="w-3 h-3 mr-2">
-                Back to Home
-            </a>
-            {% if results is defined and results %}
-            <span class="text-xs text-gray-500">Found {{ results|length }} results in {{ time }} seconds</span>
-            {% endif %}
-        </div> -->
-
-        <p class="text-sm text-gray-500 mb-3">Found {{ results_size }} results in {{ time }} seconds</p>
+        <p class="text-sm text-gray-500 mb-3">
+            Found {{ results_size }} results in {{ time }} seconds
+            {% if total_pages > 1 %}<span class="ml-1">(page {{ page }} of {{ total_pages }})</span>{% endif %}
+        </p>
 
         {% if results is defined %}
             {% if results %}
                 <div class="space-y-2" id="results-container">
                     {% for post in results %}
-                        <article class="border-l-2 border-[#52718f] pl-3 mb-3 hover:bg-gray-50 transition-colors rounded-r-md {% if loop.index > 6 %}hidden{% endif %}" data-result-index="{{ loop.index }}">
+                        <article class="border-l-2 border-[#52718f] pl-3 mb-3 hover:bg-gray-50 transition-colors rounded-r-md">
                             <h3 class="text-base font-medium text-gray-700 mb-1">
                                 <a href="{{ post.url|default('#') }}" target="_blank" class="hover:text-[#52718f] hover:underline hover:decoration-1 hover:underline-offset-2 transition-colors">
                                     {{ post.title[:95] if post.title else 'untitled' }}
@@ -52,15 +45,73 @@
                     {% endfor %}
                 </div>
                 
-                {% if results|length > 6 %}
-                <div class="text-center mt-4">
-                    <button id="load-more-button" class="text-xs text-gray-600 hover:text-[#52718f] py-1 px-3 rounded flex items-center mx-auto transition-colors cursor-pointer">
-                        <span>More results</span>
-                        <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3 ml-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+                {% if total_pages > 1 %}
+                <nav class="flex items-center justify-center gap-1 mt-6 mb-2" aria-label="Pagination">
+                    {# Previous button #}
+                    {% if page > 1 %}
+                    <a href="/search?q={{ query|urlencode }}&page={{ page - 1 }}"
+                       class="px-3 py-1.5 text-xs rounded border border-gray-200 text-gray-600 hover:bg-gray-50 hover:text-[#52718f] transition-colors flex items-center gap-1">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
                         </svg>
-                    </button>
-                </div>
+                        Prev
+                    </a>
+                    {% else %}
+                    <span class="px-3 py-1.5 text-xs rounded border border-gray-200 text-gray-400 cursor-not-allowed flex items-center gap-1">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
+                        </svg>
+                        Prev
+                    </span>
+                    {% endif %}
+
+                    {# Page numbers #}
+                    {% set start_page = [1, page - 2]|max %}
+                    {% set end_page = [total_pages, page + 2]|min %}
+                    
+                    {% if start_page > 1 %}
+                    <a href="/search?q={{ query|urlencode }}&page=1"
+                       class="px-3 py-1.5 text-xs rounded border border-gray-200 text-gray-600 hover:bg-gray-50 hover:text-[#52718f] transition-colors">1</a>
+                    {% if start_page > 2 %}
+                    <span class="px-2 py-1.5 text-xs text-gray-400">…</span>
+                    {% endif %}
+                    {% endif %}
+                    
+                    {% for p in range(start_page, end_page + 1) %}
+                        {% if p == page %}
+                        <span class="px-3 py-1.5 text-xs rounded bg-[#52718f] text-white font-medium">{{ p }}</span>
+                        {% else %}
+                        <a href="/search?q={{ query|urlencode }}&page={{ p }}"
+                           class="px-3 py-1.5 text-xs rounded border border-gray-200 text-gray-600 hover:bg-gray-50 hover:text-[#52718f] transition-colors">{{ p }}</a>
+                        {% endif %}
+                    {% endfor %}
+                    
+                    {% if end_page < total_pages %}
+                    {% if end_page < total_pages - 1 %}
+                    <span class="px-2 py-1.5 text-xs text-gray-400">…</span>
+                    {% endif %}
+                    <a href="/search?q={{ query|urlencode }}&page={{ total_pages }}"
+                       class="px-3 py-1.5 text-xs rounded border border-gray-200 text-gray-600 hover:bg-gray-50 hover:text-[#52718f] transition-colors">{{ total_pages }}</a>
+                    {% endif %}
+
+                    {# Next button #}
+                    {% if page < total_pages %}
+                    <a href="/search?q={{ query|urlencode }}&page={{ page + 1 }}"
+                       class="px-3 py-1.5 text-xs rounded border border-gray-200 text-gray-600 hover:bg-gray-50 hover:text-[#52718f] transition-colors flex items-center gap-1">
+                        Next
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+                        </svg>
+                    </a>
+                    {% else %}
+                    <span class="px-3 py-1.5 text-xs rounded border border-gray-200 text-gray-400 cursor-not-allowed flex items-center gap-1">
+                        Next
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+                        </svg>
+                    </span>
+                    {% endif %}
+                </nav>
                 {% endif %}
             {% else %}
                 <article class="mt-10 text-center">
@@ -78,34 +129,11 @@
 
 {% block scripts %}
     <script>
-        // document.getElementById('search-input')?.focus();
-
         document.getElementById('search-form').addEventListener('submit', function (event) {
             var query = document.getElementById('search-input').value.trim();
             if (query === '') {
                 event.preventDefault(); 
                 document.getElementById('search-input').focus();
-            }
-        });
-        
-        document.addEventListener('DOMContentLoaded', function() {
-            const loadMoreButton = document.getElementById('load-more-button');
-            if (loadMoreButton) {
-                loadMoreButton.addEventListener('click', function() {
-                    const hiddenResults = document.querySelectorAll('#results-container article.hidden');
-                    
-                    let count = 0;
-                    hiddenResults.forEach(function(result) {
-                        if (count < 6) {
-                            result.classList.remove('hidden');
-                            count++;
-                        }
-                    });
-                    
-                    if (hiddenResults.length <= 6) {
-                        loadMoreButton.classList.add('hidden');
-                    }
-                });
             }
         });
     </script>

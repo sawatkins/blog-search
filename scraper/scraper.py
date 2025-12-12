@@ -122,11 +122,27 @@ class Scraper:
 
             # Configure Index
             index = self.meilisearch_client.index("pages")
+            
+            # Searchable attributes - title first for ranking boost
+            index.update_searchable_attributes(["title", "text"])
+            
+            # Filterable attributes for site: and date filtering
             index.update_filterable_attributes(["domain", "date", "url", "page_id"])
-            # Distinct attribute removed to allow multiple chunks per page to be returned
+            
+            # Ranking rules - prioritize exact matches and attribute order
+            index.update_ranking_rules([
+                "words",        # Number of query terms matched
+                "typo",         # Fewer typos rank higher
+                "proximity",    # Query terms closer together rank higher
+                "attribute",    # Matches in title rank higher than text
+                "sort",
+                "exactness",    # Exact matches rank higher
+            ])
+            
+            # Distinct attribute removed to allow multiple chunks per page
             index.reset_distinct_attribute()
             
-            # Configure Embedder (check if supported first or just try)
+            # Configure Embedder for semantic search
             try:
                 index.update_embedders({
                     "default": {
@@ -564,31 +580,86 @@ class Scraper:
             else:
                 logger.error("Error saving page %s: %s", page["url"], error)
 
+    def chunk_text(self, text: str, target_size: int = 800, max_size: int = 1200) -> list[str]:
+        """
+        Split text into chunks at sentence boundaries.
+        
+        - target_size: Ideal chunk size in characters
+        - max_size: Maximum chunk size before forcing a split
+        """
+        if not text or len(text) <= target_size:
+            return [text] if text else []
+
+        # Split into sentences (handles ., !, ?, and paragraph breaks)
+        sentence_pattern = re.compile(r'(?<=[.!?])\s+|\n\n+')
+        sentences = sentence_pattern.split(text)
+        sentences = [s.strip() for s in sentences if s.strip()]
+
+        chunks = []
+        current_chunk = []
+        current_length = 0
+
+        for sentence in sentences:
+            sentence_len = len(sentence)
+
+            # If single sentence exceeds max, split by words
+            if sentence_len > max_size:
+                # Flush current chunk first
+                if current_chunk:
+                    chunks.append(" ".join(current_chunk))
+                    current_chunk = []
+                    current_length = 0
+
+                # Split long sentence by words
+                words = sentence.split()
+                word_chunk = []
+                word_length = 0
+                for word in words:
+                    if word_length + len(word) + 1 > max_size:
+                        if word_chunk:
+                            chunks.append(" ".join(word_chunk))
+                        word_chunk = [word]
+                        word_length = len(word)
+                    else:
+                        word_chunk.append(word)
+                        word_length += len(word) + 1
+                if word_chunk:
+                    current_chunk = word_chunk
+                    current_length = word_length
+                continue
+
+            # Would this sentence push us over target?
+            if current_length + sentence_len + 1 > target_size and current_chunk:
+                chunks.append(" ".join(current_chunk))
+                current_chunk = []
+                current_length = 0
+
+            current_chunk.append(sentence)
+            current_length += sentence_len + 1
+
+        # Don't forget the last chunk
+        if current_chunk:
+            chunks.append(" ".join(current_chunk))
+
+        return chunks
+
     def index_page_in_meilisearch(self, page: dict, page_id: int):
-        """Index a page in Meilisearch with error handling"""
+        """Index a page in Meilisearch with sentence-based chunking."""
         if not self.meilisearch_client:
             return
 
         try:
             text = page["text"] or ""
-            # Chunking
-            chunk_size = 1000
-            overlap = 200
-            chunks = []
-            if len(text) <= chunk_size:
-                chunks.append(text)
-            else:
-                start = 0
-                while start < len(text):
-                    end = start + chunk_size
-                    chunks.append(text[start:end])
-                    start += chunk_size - overlap
-            
+            chunks = self.chunk_text(text)
+
+            if not chunks:
+                return
+
             domain = self.get_domain(page["url"])
             documents = []
-            
+
             for i, chunk in enumerate(chunks):
-                document = {
+                documents.append({
                     "id": f"{page_id}_{i}",
                     "page_id": page_id,
                     "title": page["title"] or "",
@@ -596,8 +667,7 @@ class Scraper:
                     "domain": domain,
                     "date": page.get("date") or None,
                     "text": chunk,
-                }
-                documents.append(document)
+                })
 
             index = self.meilisearch_client.index("pages")
             task = index.add_documents(documents)
