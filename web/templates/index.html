@@ -3,54 +3,60 @@
 {% block title %}Blog Search{% endblock %}
 
 {% block content %}
-<div class="max-w-2xl mx-auto">
+<div class="max-w-2xl mx-auto pt-4">
+    
+    <!-- Tagline -->
+    <div class="text-center mb-6">
+        <p class="font-mono text-base" style="color: var(--text-primary);">
+            search the <span style="color: var(--link-color);">independent</span> web
+        </p>
+        <p class="font-mono text-xs mt-1" style="color: var(--text-muted);">
+            {{ posts_size|default('~455k') }} posts indexed
+        </p>
+    </div>
+
+    <!-- Search Box -->
+    <form id="search-form" action="/search" method="get" class="mb-6">
+        <div class="relative">
+            <span class="absolute left-3 top-1/2 -translate-y-1/2 font-mono text-sm select-none" style="color: var(--text-muted);">›</span>
+            <input type="text" name="q" id="search-input"
+                class="search-input w-full pl-7 pr-4 py-2 rounded text-sm font-mono"
+                autocomplete="off" autocapitalize="off" autocorrect="off"
+                placeholder="find blog posts..."
+                autofocus
+                value="{{ query or '' }}">
+        </div>
+    </form>
+
+    <!-- Info -->
+    <div class="flex flex-col items-center text-center mb-4" style="color: var(--text-secondary);">
+        <p class="font-ubuntu mb-1" style="color: var(--text-primary); opacity: 0.85;">
+            A search engine for personal blogs and independent websites.
+        </p>
+        <p class="font-ubuntu mb-0.5">
+            Find authentic content from real people.
+        </p>
+    </div>
+
+    <!-- Quick Links -->
+    <div class="flex items-center justify-center gap-5 mb-8 font-mono text-sm text-center">
+        <a href="/latest" class="nav-link">latest</a>
+        <span style="color: var(--text-muted);">·</span>
+        <a href="/random" class="nav-link">random</a>
+    </div>
+
     <!-- ASCII Sailboat -->
-    <div class="flex justify-center mb-6">
-        <pre class="ascii-art select-none">
-             v  ~.    v
+    <div class="flex justify-center mt-8">
+        <pre class="ascii-art select-none" style="color: var(--text-muted); font-size: 1.1em; line-height: 1.15;">
+             v  ~.      v
     v           /|
-               / |          v
+               / |            v
         v     /__|__
             \--------/
 ~^~^~^~^~^~^~`~~^~^~'~^~^~^~^~^~
     ~^~^~~~^~~~^~~~^~~~^~^~</pre>
     </div>
 
-    <!-- Search Box -->
-    <form id="search-form" action="/search" method="get" class="mb-8">
-        <div class="relative">
-            <svg xmlns="http://www.w3.org/2000/svg" class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4" style="color: var(--text-muted);" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <circle cx="11" cy="11" r="8"></circle>
-                <path d="m21 21-4.3-4.3"></path>
-            </svg>
-            <input type="text" name="q" id="search-input"
-                class="search-input w-full pl-10 pr-4 py-2.5 rounded-lg text-sm font-mono"
-                autocomplete="off" autocapitalize="off" autocorrect="off"
-                placeholder="search for blog posts..."
-                autofocus
-                value="{{ query or '' }}">
-        </div>
-    </form>
-
-    <!-- Description -->
-    <div class="text-center space-y-4">
-        <div class="space-y-2">
-            <p class="text-sm font-ubuntu" style="color: var(--text-secondary);">
-                A search engine indexing personal blog content.
-            </p>
-            <p class="text-sm font-ubuntu" style="color: var(--text-secondary);">
-                Find authentic content from real people.
-            </p>
-        </div>
-
-        <!-- Quick Links -->
-        <div class="flex items-center justify-center gap-4 pt-2">
-            <a href="/latest" class="quicklink text-sm font-medium font-ubuntu">latest posts</a>
-            <span style="color: var(--text-muted);">•</span>
-            <a href="/random" class="quicklink text-sm font-medium font-ubuntu">random post</a>
-        </div>
-
-    </div>
 </div>
 {% endblock %}
 
