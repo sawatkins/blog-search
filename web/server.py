@@ -208,4 +208,4 @@ async def favicon():
 if __name__ == "__main__":
     import uvicorn  # type: ignore
 
-    uvicorn.run(app, host="0.0.0.0", port=8008)
+    uvicorn.run(app, host="0.0.0.0", port=8000)
