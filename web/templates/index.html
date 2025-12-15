@@ -11,18 +11,21 @@
             search the <span style="color: var(--link-color);">independent</span> web
         </p>
         <p class="font-mono text-xs mt-1" style="color: var(--text-muted);">
-            {{ posts_size|default('~455k') }} posts indexed
+            {{ posts_size|default('~455k') }} pages indexed
         </p>
     </div>
 
     <!-- Search Box -->
     <form id="search-form" action="/search" method="get" class="mb-6">
         <div class="relative">
-            <span class="absolute left-3 top-1/2 -translate-y-1/2 font-mono text-sm select-none" style="color: var(--text-muted);">›</span>
+            <svg xmlns="http://www.w3.org/2000/svg" class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4" style="color: var(--text-muted);" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="11" cy="11" r="8"></circle>
+                <path d="m21 21-4.3-4.3"></path>
+            </svg>
             <input type="text" name="q" id="search-input"
-                class="search-input w-full pl-7 pr-4 py-2 rounded text-sm font-mono"
+                class="search-input w-full pl-10 pr-4 py-2 rounded text-sm font-mono"
                 autocomplete="off" autocapitalize="off" autocorrect="off"
-                placeholder="find blog posts..."
+                placeholder="search for blog posts..."
                 autofocus
                 value="{{ query or '' }}">
         </div>

@@ -14,7 +14,7 @@
                 <path d="m21 21-4.3-4.3"></path>
             </svg>
             <input type="text" name="q" id="search-input"
-                class="search-input w-full pl-10 pr-4 py-2.5 rounded-lg text-sm font-mono"
+                class="search-input w-full pl-10 pr-4 py-2 rounded text-sm font-mono"
                 autocomplete="off" autocapitalize="off" autocorrect="off"
                 placeholder="search for blog posts..."
                 value="{{ query or '' }}">
@@ -35,7 +35,7 @@
                 <article class="pb-5 border-b" style="border-color: var(--border);">
                     <!-- Domain & Date -->
                     <div class="flex items-center gap-2 text-xs mb-1" style="color: var(--text-muted);">
-                        <span class="font-mono">{{ post.url|default('#')|replace('https://', '')|replace('http://', '')|truncate(50, True, '...') }}</span>
+                        <span class="font-mono">{{ (post.url|default('#')|replace('https://', '')|replace('http://', '')).split('/')[0] }}</span>
                         {% if post.date %}
                         <span>•</span>
                         <span class="font-mono">{{ post.date }}</span>
