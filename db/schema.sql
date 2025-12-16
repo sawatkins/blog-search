@@ -42,6 +42,10 @@ CREATE TABLE IF NOT EXISTS query_logs (
 -- Index for full-text search
 CREATE INDEX IF NOT EXISTS pages_tsv_idx ON pages USING gin(page_tsv);
 
+-- Index for fast sorting by date (used by /latest endpoint)
+-- Includes id for index-only scans on the subquery
+CREATE INDEX IF NOT EXISTS pages_date_id_idx ON pages (date DESC NULLS LAST, id) WHERE date IS NOT NULL;
+
 -- Table for storing stripped URLs that should be skipped from future scraping
 CREATE TABLE IF NOT EXISTS skipped_urls (
     stripped_url TEXT PRIMARY KEY,

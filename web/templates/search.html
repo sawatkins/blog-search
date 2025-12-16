@@ -24,9 +24,13 @@
     <!-- Results -->
     <div id="search-results-container">
         {% if results is defined and results %}
+            <!-- Results header -->
+            {% if is_latest %}
+            <h1 class="text-lg font-mono mb-2" style="color: var(--text-primary);">Latest Posts</h1>
+            {% endif %}
             <!-- Results count -->
             <p class="text-xs font-mono mb-4" style="color: var(--text-muted);">
-                {{ results_size }} results ({{ time }}s)
+                {% if is_latest %}page {{ page }} of {{ total_pages }} ({{ time }}s){% else %}{{ results_size }} results ({{ time }}s){% endif %}
             </p>
 
             <!-- Results list -->
@@ -59,10 +63,12 @@
 
             <!-- Pagination -->
             {% if total_pages > 1 %}
+            {% set base_url = '/latest' if is_latest else '/search?q=' ~ (query|urlencode) %}
+            {% set page_param = '?page=' if is_latest else '&page=' %}
             <nav class="flex items-center justify-center gap-1.5 mt-8" aria-label="Pagination">
                 <!-- Previous -->
                 {% if page > 1 %}
-                <a href="/search?q={{ query|urlencode }}&page={{ page - 1 }}"
+                <a href="{{ base_url }}{{ page_param }}{{ page - 1 }}"
                    class="page-btn px-3 py-1.5 text-xs font-mono rounded flex items-center gap-1">
                     <svg xmlns="http://www.w3.org/2000/svg" class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                         <path d="m15 18-6-6 6-6"/>
@@ -83,7 +89,7 @@
                 {% set end_page = [total_pages, page + 2]|min %}
                 
                 {% if start_page > 1 %}
-                <a href="/search?q={{ query|urlencode }}&page=1" class="page-btn px-3 py-1.5 text-xs font-mono rounded">1</a>
+                <a href="{{ base_url }}{{ page_param }}1" class="page-btn px-3 py-1.5 text-xs font-mono rounded">1</a>
                 {% if start_page > 2 %}
                 <span class="px-1.5 text-xs font-mono" style="color: var(--text-muted);">…</span>
                 {% endif %}
@@ -93,7 +99,7 @@
                     {% if p == page %}
                     <span class="page-btn page-btn-active px-3 py-1.5 text-xs font-mono rounded">{{ p }}</span>
                     {% else %}
-                    <a href="/search?q={{ query|urlencode }}&page={{ p }}" class="page-btn px-3 py-1.5 text-xs font-mono rounded">{{ p }}</a>
+                    <a href="{{ base_url }}{{ page_param }}{{ p }}" class="page-btn px-3 py-1.5 text-xs font-mono rounded">{{ p }}</a>
                     {% endif %}
                 {% endfor %}
                 
@@ -101,12 +107,12 @@
                 {% if end_page < total_pages - 1 %}
                 <span class="px-1.5 text-xs font-mono" style="color: var(--text-muted);">…</span>
                 {% endif %}
-                <a href="/search?q={{ query|urlencode }}&page={{ total_pages }}" class="page-btn px-3 py-1.5 text-xs font-mono rounded">{{ total_pages }}</a>
+                <a href="{{ base_url }}{{ page_param }}{{ total_pages }}" class="page-btn px-3 py-1.5 text-xs font-mono rounded">{{ total_pages }}</a>
                 {% endif %}
 
                 <!-- Next -->
                 {% if page < total_pages %}
-                <a href="/search?q={{ query|urlencode }}&page={{ page + 1 }}"
+                <a href="{{ base_url }}{{ page_param }}{{ page + 1 }}"
                    class="page-btn px-3 py-1.5 text-xs font-mono rounded flex items-center gap-1">
                     next
                     <svg xmlns="http://www.w3.org/2000/svg" class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">

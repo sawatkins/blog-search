@@ -130,22 +130,21 @@ async def search_page(
 
 
 @app.get("/latest", response_class=HTMLResponse)
-async def latest(request: Request):
+async def latest(request: Request, page: int = Query(1, ge=1)):
     start_time = time.time()
-    results = search_engine.get_latest_posts()
-    end_time = time.time()
-    search_time = round(end_time - start_time, 2)
+    response = search_engine.get_latest_posts(page=page)
+    search_time = round(time.time() - start_time, 2)
     return templates.TemplateResponse(
         "search.html",
         {
             "request": request,
-            "results": results,
+            "results": response["results"],
             "query": "",
             "time": search_time,
-            "results_size": len(results),
-            "page": 1,
-            "total_pages": 1,
+            "page": response["page"],
+            "total_pages": response["total_pages"],
             "posts_size": search_engine.size,
+            "is_latest": True,
         },
     )
 
@@ -208,4 +207,4 @@ async def favicon():
 if __name__ == "__main__":
     import uvicorn  # type: ignore
 
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host="0.0.0.0", port=8008)

@@ -389,27 +389,41 @@ class SearchEngine:
     # Browse Methods
     # -------------------------------------------------------------------------
 
-    def get_latest_posts(self) -> list[dict]:
-        """Get most recently published posts."""
+    def get_latest_posts(self, page: int = 1) -> dict[str, Any]:
+        """Get most recently published posts with pagination."""
+        total_pages = 5
+        page = min(page, total_pages)
+        per_page = self.DEFAULT_PER_PAGE
+        offset = (page - 1) * per_page
+        
         conn = self.db.get_connection()
         try:
             with conn.cursor() as cursor:
                 cursor.execute("""
-                    SELECT title, url, date, LEFT(text, 1500) 
-                    FROM pages 
-                    WHERE date IS NOT NULL 
-                    ORDER BY date DESC 
-                    LIMIT %s
-                """, (self.RESULTS_LIMIT,))
-                return [
-                    {
-                        "title": row[0],
-                        "url": row[1].rstrip("/"),
-                        "date": row[2],
-                        "text": self._truncate_text(row[3], 300),
-                    }
-                    for row in cursor.fetchall()
-                ]
+                    SELECT p.title, p.url, p.date, LEFT(p.text, 1500)
+                    FROM (
+                        SELECT id FROM pages 
+                        WHERE date IS NOT NULL 
+                        ORDER BY date DESC 
+                        LIMIT %s OFFSET %s
+                    ) AS ids
+                    JOIN pages p ON p.id = ids.id
+                    ORDER BY p.date DESC
+                """, (per_page, offset))
+                
+                return {
+                    "results": [
+                        {
+                            "title": row[0],
+                            "url": row[1].rstrip("/"),
+                            "date": row[2],
+                            "text": self._truncate_text(row[3], 300),
+                        }
+                        for row in cursor.fetchall()
+                    ],
+                    "page": page,
+                    "total_pages": total_pages,
+                }
         finally:
             self.db.release(conn)
 
