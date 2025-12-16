@@ -27,10 +27,12 @@
             <!-- Results header -->
             {% if is_latest %}
             <h1 class="text-lg font-mono mb-2" style="color: var(--text-primary);">Latest Posts</h1>
+            {% elif is_random %}
+            <h1 class="text-lg font-mono mb-2" style="color: var(--text-primary);">Random Post</h1>
             {% endif %}
             <!-- Results count -->
             <p class="text-xs font-mono mb-4" style="color: var(--text-muted);">
-                {% if is_latest %}page {{ page }} of {{ total_pages }} ({{ time }}s){% else %}{{ results_size }} results ({{ time }}s){% endif %}
+                {% if is_latest %}page {{ page }} of {{ total_pages }} ({{ time }}s){% elif is_random %}1 result ({{ time }}s){% else %}{{ results_size }} results ({{ time }}s){% endif %}
             </p>
 
             <!-- Results list -->

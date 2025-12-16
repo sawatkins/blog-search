@@ -153,8 +153,7 @@ async def latest(request: Request, page: int = Query(1, ge=1)):
 async def random(request: Request):
     start_time = time.time()
     result = search_engine.get_random_post()
-    end_time = time.time()
-    search_time = round(end_time - start_time, 2)
+    search_time = round(time.time() - start_time, 2)
     return templates.TemplateResponse(
         "search.html",
         {
@@ -162,10 +161,10 @@ async def random(request: Request):
             "results": [result] if result else [],
             "query": "",
             "time": search_time,
-            "results_size": 1 if result else 0,
             "page": 1,
             "total_pages": 1,
             "posts_size": search_engine.size,
+            "is_random": True,
         },
     )
 
@@ -207,4 +206,4 @@ async def favicon():
 if __name__ == "__main__":
     import uvicorn  # type: ignore
 
-    uvicorn.run(app, host="0.0.0.0", port=8008)
+    uvicorn.run(app, host="0.0.0.0", port=8000)
