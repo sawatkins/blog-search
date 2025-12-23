@@ -37,17 +37,6 @@ async def api(request: Request):
     )
 
 
-@app.get("/privacy", response_class=HTMLResponse)
-async def privacy(request: Request):
-    return templates.TemplateResponse(
-        "privacy.html",
-        {
-            "request": request,
-            "posts_size": search_engine.size,
-        },
-    )
-
-
 @app.get("/api", response_class=HTMLResponse)
 async def about(request: Request):
     return templates.TemplateResponse(
