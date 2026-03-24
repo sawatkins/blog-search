@@ -97,9 +97,9 @@ async def search_page(
         }
     else:
         if search_mode == "keyword":
-            response = search_engine.search_meilisearch(query, page=page)
+            response = search_engine.search_elasticsearch(query, page=page)
         else:
-            response = search_engine.search_meilisearch_hybrid(query, page=page)
+            response = search_engine.search_elasticsearch_hybrid(query, page=page)
         search_time = round(response.get("search_time", 0) / 1000, 2)
         results = response.get("results", [])
 
@@ -165,7 +165,7 @@ async def api_search(q: str = Query(...), page: int = Query(1, ge=1)):
         return JSONResponse({"results": [], "total": 0, "page": 1, "total_pages": 0})
 
     try:
-        response = search_engine.search_meilisearch(query, page=page)
+        response = search_engine.search_elasticsearch(query, page=page)
         return JSONResponse({
             "results": response.get("results", []),
             "total": response.get("results_size", 0),

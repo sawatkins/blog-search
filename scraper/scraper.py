@@ -5,7 +5,7 @@ import re
 import sys
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
-from datetime import datetime
+from datetime import datetime, timezone
 from time import sleep
 from urllib.robotparser import RobotFileParser
 
@@ -14,9 +14,9 @@ import requests
 import trafilatura
 from courlan import clean_url, get_base_url, is_valid_url
 from dotenv import load_dotenv
+from elasticsearch import Elasticsearch
 from lxml import html
 from psycopg2 import Error, pool
-from meilisearch import Client as MeiliSearch
 
 from sqs_queue import SQSQueue
 
@@ -49,8 +49,9 @@ class Scraper:
         self.init_db()
         self.sqs_queue = SQSQueue()
         self.existing_stripped_urls = None
-        self.meilisearch_client = None
-        self.init_meilisearch()
+        self.elasticsearch_client: Elasticsearch | None = None
+        self._es_index = "pages"
+        self.init_elasticsearch()
 
     def init_pool(self):
         try:
@@ -100,64 +101,19 @@ class Scraper:
             logger.error("Error fetching URL %s: %s", url, e)
             raise e
 
-    def init_meilisearch(self):
-        """Initialize Meilisearch client with error handling"""
-        meili_url = os.getenv("MEILISEARCH_URL")
-        meili_key = os.getenv("MEILISEARCH_API_KEY")
-
-        if not meili_url or not meili_key:
-            logger.warning(
-                "MEILISEARCH_URL or MEILISEARCH_API_KEY not set, skipping Meilisearch"
-            )
-            self.meilisearch_client = None
-            return
-
+    def init_elasticsearch(self):
+        url = os.getenv("ELASTICSEARCH_URL", "http://localhost:9200")
         try:
-            self.meilisearch_client = MeiliSearch(
-                url=meili_url,
-                api_key=meili_key,
-            )
-            self.meilisearch_client.health()
-            logger.info("Connected to Meilisearch at %s", meili_url)
-
-            # Configure Index
-            index = self.meilisearch_client.index("pages")
-            
-            # Searchable attributes - title first for ranking boost
-            index.update_searchable_attributes(["title", "text"])
-            
-            # Filterable attributes for site: and date filtering
-            index.update_filterable_attributes(["domain", "date", "url", "page_id"])
-            
-            # Ranking rules - prioritize exact matches and attribute order
-            index.update_ranking_rules([
-                "words",        # Number of query terms matched
-                "typo",         # Fewer typos rank higher
-                "proximity",    # Query terms closer together rank higher
-                "attribute",    # Matches in title rank higher than text
-                "sort",
-                "exactness",    # Exact matches rank higher
-            ])
-            
-            # Distinct attribute removed to allow multiple chunks per page
-            index.reset_distinct_attribute()
-            
-            # Configure Embedder for semantic search
-            try:
-                index.update_embedders({
-                    "default": {
-                        "source": "huggingFace",
-                        "model": "sentence-transformers/all-MiniLM-L6-v2",
-                    }
-                })
-            except Exception as e:
-                logger.warning("Failed to update embedders (might be already configured or unsupported): %s", e)
-
+            client = Elasticsearch(url)
+            if not client.ping():
+                logger.warning("Elasticsearch ping failed; indexing disabled")
+                self.elasticsearch_client = None
+                return
+            self.elasticsearch_client = client
+            logger.info("Connected to Elasticsearch at %s (index %s)", url, self._es_index)
         except Exception as e:
-            logger.warning(
-                "Could not connect to Meilisearch (will skip indexing): %s", e
-            )
-            self.meilisearch_client = None
+            logger.warning("Could not connect to Elasticsearch (will skip indexing): %s", e)
+            self.elasticsearch_client = None
 
     def init_db(self):
         try:
@@ -533,7 +489,7 @@ class Scraper:
                 self.existing_stripped_urls[stripped_url] = 1
 
     def save_page(self, page: dict):
-        """Save a page to the database and index in Meilisearch"""
+        """Save a page to the database and index in Elasticsearch."""
         page_id = None
         try:
             with self.db_connection() as conn:
@@ -566,9 +522,8 @@ class Scraper:
                     logger.info("Successfully saved/updated page: %s", page["url"])
                 conn.commit()
 
-            # Add to Meilisearch if DB save was successful and client is available
-            if page_id and self.meilisearch_client:
-                self.index_page_in_meilisearch(page, page_id)
+            if page_id and self.elasticsearch_client:
+                self.index_page_in_elasticsearch(page, page_id)
 
         except Error as error:
             # Check if it's a fingerprint duplicate error
@@ -643,43 +598,37 @@ class Scraper:
 
         return chunks
 
-    def index_page_in_meilisearch(self, page: dict, page_id: int):
-        """Index a page in Meilisearch with sentence-based chunking."""
-        if not self.meilisearch_client:
+    def index_page_in_elasticsearch(self, page: dict, page_id: int):
+        """Index one document per page (matches bulk import from PostgreSQL)."""
+        if not self.elasticsearch_client:
             return
 
         try:
             text = page["text"] or ""
-            chunks = self.chunk_text(text)
-
-            if not chunks:
+            if not text.strip():
                 return
 
-            domain = self.get_domain(page["url"])
-            documents = []
-
-            for i, chunk in enumerate(chunks):
-                documents.append({
-                    "id": f"{page_id}_{i}",
-                    "page_id": page_id,
-                    "title": page["title"] or "",
-                    "url": page["url"] or "",
-                    "domain": domain,
-                    "date": page.get("date") or None,
-                    "text": chunk,
-                })
-
-            index = self.meilisearch_client.index("pages")
-            task = index.add_documents(documents)
+            doc = {
+                "title": page["title"] or "",
+                "url": page["url"] or "",
+                "text": text,
+                "date": page.get("date"),
+                "scraped_on_date": datetime.now(timezone.utc).isoformat(),
+                "original_url": page.get("original_url"),
+            }
+            self.elasticsearch_client.index(
+                index=self._es_index,
+                id=str(page_id),
+                document=doc,
+            )
             logger.info(
-                "Added page to Meilisearch index: %s (%d chunks, task: %s)",
+                "Indexed page in Elasticsearch: %s (id=%s)",
                 page["url"],
-                len(documents),
-                task.task_uid,
+                page_id,
             )
 
         except Exception as e:
-            logger.warning("Failed to index page in Meilisearch %s: %s", page["url"], e)
+            logger.warning("Failed to index page in Elasticsearch %s: %s", page["url"], e)
 
     def get_domain(self, url: str) -> str:
         """Extract domain from URL"""
@@ -691,49 +640,53 @@ class Scraper:
 
 
     def reindex_all(self):
-        """Re-index all pages from the database to Meilisearch"""
-        if not self.meilisearch_client:
-            logger.error("Meilisearch not configured")
+        """Re-index all pages from the database into Elasticsearch."""
+        if not self.elasticsearch_client:
+            logger.error("Elasticsearch not configured")
             return
 
         logger.info("Starting full re-indexing...")
-        
+
         try:
-            # Delete all documents first as ID format changed
-            self.meilisearch_client.index("pages").delete_all_documents()
-            logger.info("Cleared existing documents")
+            self.elasticsearch_client.delete_by_query(
+                index=self._es_index,
+                body={"query": {"match_all": {}}},
+                refresh=True,
+                conflicts="proceed",
+            )
+            logger.info("Cleared existing documents in index %s", self._es_index)
         except Exception as e:
-            logger.warning("Failed to clear documents: %s", e)
+            logger.warning("Failed to clear index (continuing anyway): %s", e)
 
         try:
             with self.db_connection() as conn:
-                cursor = conn.cursor(name="reindex_cursor") # Server-side cursor for large datasets
+                cursor = conn.cursor(name="reindex_cursor")
                 cursor.itersize = 100
                 cursor.execute("SELECT count(*) FROM pages")
                 total = cursor.fetchone()[0]
                 logger.info("Found %d pages to re-index", total)
-                
+
                 cursor.execute("SELECT id, title, url, date, text, fingerprint FROM pages")
-                
+
                 count = 0
                 while True:
                     rows = cursor.fetchmany(100)
                     if not rows:
                         break
-                    
+
                     for row in rows:
                         page = {
                             "title": row[1],
                             "url": row[2],
                             "date": row[3],
                             "text": row[4],
-                            "fingerprint": row[5]
+                            "fingerprint": row[5],
                         }
-                        self.index_page_in_meilisearch(page, row[0])
+                        self.index_page_in_elasticsearch(page, row[0])
                         count += 1
-                    
+
                     logger.info("Indexed %d/%d pages", count, total)
-                            
+
         except Exception as e:
             logger.error("Error during re-indexing: %s", e)
 
@@ -773,7 +726,7 @@ if __name__ == "__main__":
             logger.info("Enqueue complete, starting processing...")
             scraper.scrape()
         elif command == "reindex":
-            logger.info("Reindex all pages from the database to Meilisearch")
+            logger.info("Reindex all pages from the database to Elasticsearch")
             scraper.reindex_all()
         elif command == "tmp":
             scraper.tmp()

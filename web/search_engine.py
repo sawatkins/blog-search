@@ -1,6 +1,6 @@
 """
 Search engine module for blog search.
-Handles Meilisearch and PostgreSQL full-text search with proper query parsing.
+Handles Elasticsearch and PostgreSQL full-text search with proper query parsing.
 """
 
 import os
@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from dotenv import load_dotenv
-from meilisearch import Client as MeiliSearch
+from elasticsearch import Elasticsearch
 from psycopg2 import Error, pool
 
 
@@ -42,34 +42,33 @@ class QueryParser:
         """
         Parse query to extract:
         - Clean query text (with quoted phrases preserved)
-        - Site filters
+        - Site domains from site: filters (for URL scoping in Elasticsearch)
         - Quoted phrases (for exact matching)
-        
-        Returns: (clean_query, filters, quoted_phrases)
+
+        Returns: (clean_query, site_domains, quoted_phrases)
         """
         if not query or not query.strip():
             return "", [], []
 
-        filters = []
-        quoted_phrases = []
+        site_domains: list[str] = []
 
         # Extract site: filters
         site_matches = QueryParser.SITE_FILTER_PATTERN.findall(query)
         for domain in site_matches:
             clean_domain = re.sub(r"[^a-zA-Z0-9.\-_]", "", domain)
             if clean_domain:
-                filters.append(f'domain = "{clean_domain}"')
+                site_domains.append(clean_domain)
 
         # Remove site: from query
         clean_query = QueryParser.SITE_FILTER_PATTERN.sub("", query)
 
-        # Extract quoted phrases for reference (keep them in query for Meilisearch)
+        # Extract quoted phrases (reserved for future query behavior)
         quoted_phrases = QueryParser.QUOTED_PHRASE_PATTERN.findall(clean_query)
 
         # Normalize whitespace but preserve quotes
         clean_query = " ".join(clean_query.split()).strip()
 
-        return clean_query, filters, quoted_phrases
+        return clean_query, site_domains, quoted_phrases
 
 
 class DatabasePool:
@@ -122,20 +121,23 @@ class DatabasePool:
 
 
 class SearchEngine:
-    """Main search engine class supporting Meilisearch and PostgreSQL."""
+    """Main search engine class supporting Elasticsearch and PostgreSQL."""
 
     DEFAULT_PER_PAGE = 6
-    HYBRID_FETCH_LIMIT = 100  # Fetch more to dedupe by URL
     RESULTS_LIMIT = 24  # Max results for PostgreSQL fallback and latest posts
 
-    def __init__(self, use_meilisearch: bool = True):
+    # Drop hits below this BM25 _score (not 0–1; tune against your index). None disables.
+    ES_MIN_SCORE: float | None = 1.0
+
+    def __init__(self, use_elasticsearch: bool = True):
         load_dotenv()
         self.db = DatabasePool()
         self._init_schema()
         self.size = self._get_db_size()
-        self.meilisearch: MeiliSearch | None = None
-        if use_meilisearch:
-            self._init_meilisearch()
+        self.elasticsearch: Elasticsearch | None = None
+        self._es_index = "pages"
+        if use_elasticsearch:
+            self._init_elasticsearch()
 
     def _init_schema(self):
         """Initialize database schema."""
@@ -163,88 +165,88 @@ class SearchEngine:
         finally:
             self.db.release(conn)
 
-    def _init_meilisearch(self):
-        """Initialize Meilisearch client."""
-        url = os.getenv("MEILISEARCH_URL")
-        key = os.getenv("MEILISEARCH_API_KEY")
-        if url and key:
-            self.meilisearch = MeiliSearch(url=url, api_key=key)
+    def _init_elasticsearch(self):
+        url = os.getenv("ELASTICSEARCH_URL", "http://localhost:9200")
+        try:
+            client = Elasticsearch(url)
+            if not client.ping():
+                print("Warning: Elasticsearch ping failed; search may be unavailable")
+                self.elasticsearch = None
+                return
+            self.elasticsearch = client
+        except Exception as e:
+            print(f"Warning: could not connect to Elasticsearch: {e}")
+            self.elasticsearch = None
+
+    @staticmethod
+    def _es_url_filters(site_domains: list[str]) -> list[dict[str, Any]]:
+        """Restrict to documents whose keyword url contains each listed host."""
+        return [{"wildcard": {"url": f"*{d}*"}} for d in site_domains]
+
+    def _es_keyword_body(self, clean_query: str, site_domains: list[str]) -> dict[str, Any]:
+        if clean_query:
+            must: list[dict[str, Any]] = [
+                {
+                    "multi_match": {
+                        "query": clean_query,
+                        "fields": ["title^2", "text"],
+                        "type": "cross_fields",
+                        "operator": "and",
+                    }
+                }
+            ]
+        else:
+            must = [{"match_all": {}}]
+        bool_query: dict[str, Any] = {"must": must}
+        if site_domains:
+            bool_query["filter"] = self._es_url_filters(site_domains)
+        return {"query": {"bool": bool_query}}
 
     def __del__(self):
         self.db.close()
 
     # -------------------------------------------------------------------------
-    # Meilisearch Search Methods
+    # Elasticsearch search
     # -------------------------------------------------------------------------
 
-    def search_meilisearch(
+    def search_elasticsearch(
         self, query: str, page: int = 1, per_page: int | None = None
     ) -> dict[str, Any]:
-        """Keyword search using Meilisearch with pagination."""
+        """Keyword search using Elasticsearch with pagination."""
         per_page = per_page or self.DEFAULT_PER_PAGE
-        
-        if not self.meilisearch:
-            self._init_meilisearch()
-            if not self.meilisearch:
+
+        if not self.elasticsearch:
+            self._init_elasticsearch()
+            if not self.elasticsearch:
                 return self._empty_response(page, per_page)
 
-        clean_query, filters, _ = QueryParser.parse(query)
+        clean_query, site_domains, _ = QueryParser.parse(query)
 
-        if not clean_query and not filters:
+        if not clean_query and not site_domains:
             return self._empty_response(page, per_page)
 
         offset = (page - 1) * per_page
-        
-        search_params = {
-            "limit": per_page,
-            "offset": offset,
-            "matchingStrategy": "all",  # All words must match for better precision
-            "attributesToSearchOn": ["title", "text"],
-            "rankingScoreThreshold": 0.5,  # Filter out low-relevance results
-        }
+        body = self._es_keyword_body(clean_query, site_domains)
+        body["from"] = offset
+        body["size"] = per_page
+        body["track_total_hits"] = True
+        if self.ES_MIN_SCORE is not None:
+            body["min_score"] = self.ES_MIN_SCORE
 
-        if filters:
-            search_params["filter"] = " AND ".join(filters)
-
-        results = self.meilisearch.index("pages").search(clean_query, search_params)
-        return self._format_response(results, page, per_page)
-
-    def search_meilisearch_hybrid(
-        self, query: str, page: int = 1, per_page: int | None = None
-    ) -> dict[str, Any]:
-        """Hybrid semantic + keyword search using Meilisearch with pagination."""
-        per_page = per_page or self.DEFAULT_PER_PAGE
-        
-        if not self.meilisearch:
-            self._init_meilisearch()
-            if not self.meilisearch:
-                return self._empty_response(page, per_page)
-
-        clean_query, filters, quoted_phrases = QueryParser.parse(query)
-
-        if not clean_query and not filters:
+        try:
+            raw = self.elasticsearch.search(index=self._es_index, body=body)
+        except Exception as e:
+            print(f"Elasticsearch search error: {e}")
             return self._empty_response(page, per_page)
 
-        # Adjust semantic ratio based on query type
-        # More semantic for natural language, more keyword for exact phrases
-        semantic_ratio = 0.5 if quoted_phrases else 0.7
+        return self._format_es_response(raw, page, per_page)
 
-        # For hybrid, we fetch more to dedupe by URL, then paginate
-        search_params = {
-            "limit": self.HYBRID_FETCH_LIMIT,
-            "hybrid": {
-                "semanticRatio": semantic_ratio,
-                "embedder": "default",
-            },
-            "rankingScoreThreshold": 0.6,  # Filter out low-relevance results
-            "attributesToSearchOn": ["title", "text"],
-        }
-
-        if filters:
-            search_params["filter"] = " AND ".join(filters)
-
-        results = self.meilisearch.index("pages").search(clean_query, search_params)
-        return self._format_grouped_response(results, page, per_page)
+    def search_elasticsearch_hybrid(
+        self, query: str, page: int = 1, per_page: int | None = None
+    ) -> dict[str, Any]:
+        # TODO(elasticsearch): real hybrid = BM25 + sparse/dense vectors (ELSER, text_embedding
+        # inference, kNN) with RRF or linear combination; index must expose vector fields.
+        return self.search_elasticsearch(query, page=page, per_page=per_page)
 
     def _empty_response(self, page: int, per_page: int) -> dict[str, Any]:
         """Return empty response with pagination metadata."""
@@ -257,66 +259,32 @@ class SearchEngine:
             "total_pages": 0,
         }
 
-    def _format_response(
-        self, results: dict[str, Any], page: int, per_page: int
-    ) -> dict[str, Any]:
-        """Format Meilisearch response for keyword search with pagination."""
-        hits = results.get("hits", [])
-        total_hits = results.get("estimatedTotalHits", 0)
-        total_pages = (total_hits + per_page - 1) // per_page if total_hits > 0 else 0
-        
+    def _es_total_hits(self, raw: dict[str, Any]) -> int:
+        total = raw.get("hits", {}).get("total", 0)
+        if isinstance(total, dict):
+            return int(total.get("value", 0))
+        return int(total or 0)
+
+    def _source_to_row(self, src: dict[str, Any]) -> dict[str, Any]:
         return {
-            "results": [
-                {
-                    "title": hit.get("title", ""),
-                    "url": hit.get("url", "").rstrip("/"),
-                    "date": hit.get("date"),
-                    "text": self._truncate_text(hit.get("text", ""), 300),
-                }
-                for hit in hits
-            ],
-            "results_size": total_hits,
-            "search_time": results.get("processingTimeMs", 0),
-            "page": page,
-            "per_page": per_page,
-            "total_pages": total_pages,
+            "title": src.get("title", ""),
+            "url": (src.get("url") or "").rstrip("/"),
+            "date": src.get("date"),
+            "text": self._truncate_text(src.get("text", ""), 300),
         }
 
-    def _format_grouped_response(
-        self, results: dict[str, Any], page: int, per_page: int
+    def _format_es_response(
+        self, raw: dict[str, Any], page: int, per_page: int
     ) -> dict[str, Any]:
-        """Format and dedupe results by URL for hybrid search, then paginate."""
-        hits = results.get("hits", [])
-        seen_urls = set()
-        all_deduped = []
-
-        # First dedupe all results
-        for hit in hits:
-            url = hit.get("url", "").rstrip("/")
-            if url in seen_urls:
-                continue
-
-            seen_urls.add(url)
-            all_deduped.append({
-                "title": hit.get("title", ""),
-                "url": url,
-                "date": hit.get("date"),
-                "text": self._truncate_text(hit.get("text", ""), 300),
-            })
-
-        # Calculate pagination on deduped results
-        total_deduped = len(all_deduped)
-        total_pages = (total_deduped + per_page - 1) // per_page if total_deduped > 0 else 0
-        
-        # Slice for current page
-        start_idx = (page - 1) * per_page
-        end_idx = start_idx + per_page
-        page_results = all_deduped[start_idx:end_idx]
+        """Format Elasticsearch response for keyword search with pagination."""
+        hits = raw.get("hits", {}).get("hits", [])
+        total_hits = self._es_total_hits(raw)
+        total_pages = (total_hits + per_page - 1) // per_page if total_hits > 0 else 0
 
         return {
-            "results": page_results,
-            "results_size": total_deduped,
-            "search_time": results.get("processingTimeMs", 0),
+            "results": [self._source_to_row(h.get("_source", {})) for h in hits],
+            "results_size": total_hits,
+            "search_time": raw.get("took", 0),
             "page": page,
             "per_page": per_page,
             "total_pages": total_pages,
@@ -491,13 +459,13 @@ if __name__ == "__main__":
                 break
 
             print("\n--- Keyword Search ---")
-            response = engine.search_meilisearch(query)
+            response = engine.search_elasticsearch(query)
             print(f"Found {response['results_size']} results in {response['search_time']}ms")
             for r in response["results"][:5]:
                 print(f"  {r['title'][:60]}... - {r['url']}")
 
             print("\n--- Hybrid Search ---")
-            response = engine.search_meilisearch_hybrid(query)
+            response = engine.search_elasticsearch_hybrid(query)
             print(f"Found {response['results_size']} results in {response['search_time']}ms")
             for r in response["results"][:5]:
                 print(f"  {r['title'][:60]}... - {r['url']}")
