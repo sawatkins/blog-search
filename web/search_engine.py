@@ -398,11 +398,11 @@ class SearchEngine:
                     FROM (
                         SELECT id FROM pages 
                         WHERE date IS NOT NULL 
-                        ORDER BY date DESC 
+                        ORDER BY date DESC NULLS LAST, id
                         LIMIT %s OFFSET %s
                     ) AS ids
                     JOIN pages p ON p.id = ids.id
-                    ORDER BY p.date DESC
+                    ORDER BY p.date DESC NULLS LAST, p.id
                 """, (per_page, offset))
                 
                 return {

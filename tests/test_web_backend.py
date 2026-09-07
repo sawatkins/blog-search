@@ -189,6 +189,14 @@ class SearchEngineTests(unittest.TestCase):
         self.database.get_connection.assert_not_called()
         self.client.ping.assert_not_called()
 
+    def test_latest_order_matches_index_and_breaks_date_ties_consistently(self):
+        self.cursor.fetchall.return_value = []
+        self.engine.get_latest_posts(page=2)
+        query, parameters = self.cursor.execute.call_args.args
+        self.assertIn('ORDER BY date DESC NULLS LAST, id', query)
+        self.assertIn('ORDER BY p.date DESC NULLS LAST, p.id', query)
+        self.assertEqual(parameters, (self.engine.DEFAULT_PER_PAGE, self.engine.DEFAULT_PER_PAGE))
+
     def test_elasticsearch_defaults_to_pages_without_authentication(self):
         self.Elasticsearch.assert_called_once_with(
             "http://localhost:9200", request_timeout=10

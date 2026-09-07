@@ -1,0 +1,34 @@
+# Live copy: /home/debian/docker-compose/elastisearch/docker-compose.yml
+# Keep this pair on the same tested patch release; preserve the existing volume.
+services:
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:9.3.8@sha256:f96812864b81e62a9ce7562c4f4bbef1186bb4e8798f814bc6a5f2b84b51b540
+    container_name: elasticsearch
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - ES_JAVA_OPTS=-Xms8g -Xmx8g
+      - path.repo=/usr/share/elasticsearch/snapshots
+    ports:
+      - "127.0.0.1:9200:9200"
+    volumes:
+      - esdata:/usr/share/elasticsearch/data
+      - /home/debian/blog-search/backup/elasticsearch-snapshots:/usr/share/elasticsearch/snapshots
+    mem_limit: 12g
+    restart: unless-stopped
+
+  kibana:
+    image: docker.elastic.co/kibana/kibana:9.3.8@sha256:a9f4af21536422d9a3bb924bad5990b24859db0c9a0474558f283244a2bcd481
+    container_name: kibana
+    environment:
+      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+    ports:
+      - "127.0.0.1:5601:5601"
+    depends_on:
+      - elasticsearch
+    mem_limit: 2g
+    restart: unless-stopped
+
+volumes:
+  esdata:
+    driver: local

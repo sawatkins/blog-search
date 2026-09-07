@@ -7,10 +7,13 @@ Blog sources come from [Kagi Small Web](https://github.com/kagisearch/smallweb).
 - **Crawler:** daily feed checks plus resumable sitemap/archive discovery. PostgreSQL
   stores jobs, retry state, HTTP validators, and pending search-index writes.
 - **Extraction:** Trafilatura runs locally. No paid extraction API is required.
-- **Hosting:** systemd runs the app and scheduled crawler on the existing server;
+- **Hosting:** systemd runs the app on the existing server; crawler scheduling is off.
   Elasticsearch and Plausible run in Docker; the app's database is on Neon.
 
 ## Development
+
+Use the pinned Python **3.14.7** and uv **0.12.10 or newer**. The supported search
+server is Elasticsearch 9.3 or newer within major version 9.
 
 ```sh
 uv sync --frozen
@@ -43,3 +46,6 @@ uv run python -B -m unittest discover -s tests
 
 Set `TEST_DATABASE_URL` to a disposable PostgreSQL database to include transaction
 and recovery tests. These tests never use the application's database configuration.
+
+The [runtime/security update audit](ops/audits/2026-09-07.md) records deployed
+versions, verification, backups and the pending host reboot.

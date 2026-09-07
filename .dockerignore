@@ -1,0 +1,18 @@
+# Only app source and locked build inputs belong in the build context.
+*
+!Dockerfile
+!.dockerignore
+!pyproject.toml
+!uv.lock
+!README.md
+!web/
+!web/**
+!scraper/
+!scraper/**
+!db/
+!db/**
+**/.env
+**/.env.*
+**/__pycache__/
+**/*.pyc
+**/*.log

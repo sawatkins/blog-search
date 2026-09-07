@@ -2,6 +2,7 @@ import gzip
 import io
 import socket
 import threading
+import tempfile
 import time
 import unittest
 import zlib
@@ -9,6 +10,7 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from email.utils import format_datetime
 from types import SimpleNamespace
+from pathlib import Path
 from unittest.mock import Mock, patch
 
 import requests
@@ -167,14 +169,20 @@ class FetchingTests(unittest.TestCase):
 
     def test_304_skips_body_and_large_content_length(self):
         self.routes["https://example.com/feed"] = response(status=304, headers={"ETag": '"same"', "Content-Length": "999999999"})
-        result = self.fetcher.fetch("https://example.com/feed", check_robots=False)
+        result = self.fetcher.fetch("https://example.com/feed", etag='"same"', check_robots=False)
         self.assertEqual(result.status, 304)
         self.assertEqual(result.body, b"")
         self.assertEqual(result.etag, '"same"')
 
+    def test_unsolicited_304_is_not_treated_as_a_successful_first_fetch(self):
+        self.routes["https://example.com/feed"] = response(status=304)
+        with self.assertRaises(FetchError):
+            self.fetcher.fetch("https://example.com/feed", check_robots=False)
+
     def test_retry_statuses_and_retry_after_seconds(self):
         for status in (408, 425, 429, 500, 502, 503, 504, 599):
             with self.subTest(status=status):
+                self.fetcher._cooldowns.clear()  # Independent response scenarios.
                 self.routes["https://example.com/"] = response(status=status, headers={"Retry-After": "120"})
                 with self.assertRaises(FetchError) as caught:
                     self.fetcher.fetch("https://example.com/", check_robots=False)
@@ -199,6 +207,7 @@ class FetchingTests(unittest.TestCase):
             ("untrusted secret", None), ("-10", None), ("NaN", None), ("1.5", None),
         ):
             with self.subTest(value=value), patch("scraper.fetching.time.time", return_value=now):
+                self.fetcher._cooldowns.clear()
                 self.routes["https://example.com/"] = response(status=429, headers={"Retry-After": value})
                 with self.assertRaises(FetchError) as caught:
                     self.fetcher.fetch("https://example.com/", check_robots=False)
@@ -214,6 +223,33 @@ class FetchingTests(unittest.TestCase):
                 self.assertTrue(caught.exception.retryable)
                 self.assertNotIn("secret", str(caught.exception))
                 self.assertTrue(caught.exception.__suppress_context__)
+                self.assertEqual(caught.exception.failure_kind, 'network_error')
+                self.assertEqual(caught.exception.host, 'example.com')
+
+    def test_body_errors_are_not_connection_failures(self):
+        for error in (requests.ConnectionError('truncated body'), ValueError('bad body'), FetchError('Invalid compressed body')):
+            with self.subTest(error=type(error).__name__):
+                self.routes['https://example.com/'] = response(b'body')
+                with patch.object(self.fetcher, '_body', side_effect=error), self.assertRaises(FetchError) as caught:
+                    self.fetcher.fetch('https://example.com/', check_robots=False)
+                self.assertIsNone(caught.exception.failure_kind)
+                self.assertEqual(caught.exception.status_code, 200)
+
+    def test_dns_failure_identifies_the_actual_redirect_destination(self):
+        self.routes['https://example.com/'] = response(status=302, headers={'Location': 'https://other.com/post'})
+        self.dns.side_effect = [self.resolve('example.com', 443), socket.gaierror('secret DNS details')]
+        with self.assertRaises(FetchError) as caught:
+            self.fetcher.fetch('https://example.com/', check_robots=False)
+        self.assertEqual(caught.exception.failure_kind, 'network_error')
+        self.assertEqual(caught.exception.host, 'other.com')
+        self.assertNotIn('secret', str(caught.exception))
+
+    def test_empty_dns_response_is_a_connection_failure(self):
+        self.dns.side_effect = None
+        self.dns.return_value = []
+        with self.assertRaises(FetchError) as caught:
+            self.fetcher.fetch('https://example.com/', check_robots=False)
+        self.assertEqual(caught.exception.failure_kind, 'network_error')
 
     def test_invalid_header_is_sanitized(self):
         with self.assertRaises(FetchError) as caught:
@@ -321,6 +357,43 @@ class FetchingTests(unittest.TestCase):
         self.assertFalse(caught.exception.retryable)
         self.assertEqual(self.urls(), ["https://example.com/", "https://other.com/robots.txt"])
 
+    def test_feed_tracking_http_https_and_slash_redirects_reach_article(self):
+        self.allow_robots('http://feeds.example.com')
+        self.allow_robots('http://example.com')
+        self.allow_robots('https://example.com')
+        self.routes['http://feeds.example.com/link/123'] = response(status=302, headers={'Location': 'http://example.com/post'})
+        self.routes['http://example.com/post'] = response(status=301, headers={'Location': 'https://example.com/post'})
+        self.routes['https://example.com/post'] = response(status=308, headers={'Location': '/post/'})
+        self.routes['https://example.com/post/'] = response(b'article')
+        result = self.fetcher.fetch('http://feeds.example.com/link/123')
+        self.assertEqual((result.url, result.body), ('https://example.com/post/', b'article'))
+
+    def test_saved_final_url_receives_validators_not_the_tracking_link(self):
+        self.allow_robots('https://feeds.example.com')
+        self.allow_robots()
+        self.routes['https://feeds.example.com/link'] = response(status=302, headers={'Location': 'https://example.com/post/'})
+        self.routes['https://example.com/post/'] = response(status=304)
+        result = self.fetcher.fetch('https://feeds.example.com/link', etag='"article"',
+                                    validator_url='https://example.com/post/')
+        self.assertEqual(result.status, 304)
+        for request, _ in self.requests:
+            self.assertEqual(request.headers.get('If-None-Match'),
+                             '"article"' if request.url == 'https://example.com/post/' else None)
+
+    def test_redirect_changed_target_does_not_receive_old_validators(self):
+        self.allow_robots()
+        self.routes['https://example.com/link'] = response(status=302, headers={'Location': '/new-post/'})
+        self.routes['https://example.com/new-post/'] = response(b'new article')
+        self.fetcher.fetch('https://example.com/link', etag='"old"', validator_url='https://example.com/old-post/')
+        self.assertTrue(all('If-None-Match' not in request.headers for request, _ in self.requests))
+
+    def test_same_origin_different_path_must_not_inherit_validators(self):
+        self.allow_robots()
+        self.routes['https://example.com/old'] = response(status=302, headers={'Location': '/new'})
+        self.routes['https://example.com/new'] = response(b'new article')
+        self.fetcher.fetch('https://example.com/old', etag='"old"')
+        self.assertNotIn('If-None-Match', self.requests[-1][0].headers)
+
     def test_cross_origin_redirect_drops_validators(self):
         self.allow_robots()
         self.allow_robots("https://other.com")
@@ -344,10 +417,81 @@ class FetchingTests(unittest.TestCase):
             self.assertFalse(caught.exception.retryable)
         self.assertEqual(self.urls(), ["https://example.com/robots.txt"])
 
+    def test_robots_wildcards_longest_match_ties_and_repeated_groups(self):
+        self.allow_robots(body=b'''User-agent: *
+Disallow: /private
+Allow: /private/public
+Disallow: /*?secret=*
+Disallow: /equal
+Allow: /equal
+User-agent: *
+Disallow: /second-group$
+''')
+        for path, allowed in (('/private/x', False), ('/private/public/x', True),
+                              ('/post?secret=yes', False), ('/equal', True),
+                              ('/second-group', False), ('/second-group-more', True)):
+            with self.subTest(path=path):
+                url = 'https://example.com' + path
+                self.routes[url] = response(b'ok')
+                if allowed:
+                    self.assertEqual(self.fetcher.fetch(url).body, b'ok')
+                else:
+                    with self.assertRaises(FetchError):
+                        self.fetcher.fetch(url)
+                    self.assertNotIn(url, self.urls())
+
+    def test_redirect_rate_limit_blocks_other_requests_and_survives_restart(self):
+        self.allow_robots()
+        self.allow_robots('https://other.com')
+        self.routes['https://example.com/start'] = response(status=302, headers={'Location': 'https://other.com/post'})
+        self.routes['https://other.com/post'] = response(status=429, headers={'Retry-After': '172800'})
+        with self.assertRaises(FetchError) as caught:
+            self.fetcher.fetch('https://example.com/start')
+        self.assertEqual(caught.exception.host, 'other.com')
+        self.assertEqual(caught.exception.retry_after, 172800)
+        sent = len(self.requests)
+        for fetcher in (self.fetcher, Fetcher(cooldowns={'other.com': 172800})):
+            with self.assertRaises(FetchError):
+                fetcher.fetch('https://other.com/another')
+        self.assertEqual(sent, len(self.requests))
+        self.routes['https://example.com/another'] = response(b'ok')
+        self.assertEqual(self.fetcher.fetch('https://example.com/another').body, b'ok')
+
+    def test_retry_after_extreme_values_cannot_overflow_storage(self):
+        self.assertEqual(fetching._retry_after('9' * 300), fetching.MAX_COOLDOWN)
+
+    def test_header_indexing_directives_reach_extraction(self):
+        self.routes['https://example.com/'] = response(b'ok', headers={'X-Robots-Tag': 'noindex'})
+        result = self.fetcher.fetch('https://example.com/', check_robots=False)
+        self.assertEqual(result.robots_header, 'noindex')
+
     def test_robots_uses_configured_user_agent(self):
         self.allow_robots(body=b"User-agent: BlogSearchBot\nDisallow: /\n\nUser-agent: *\nAllow: /\n")
-        with self.assertRaises(FetchError):
+        with self.assertRaises(FetchError) as caught:
             self.fetcher.fetch("https://example.com/")
+        self.assertEqual(caught.exception.failure_kind, 'robots_denied')
+
+    def test_tls_error_is_classified_and_does_not_downgrade_or_disable_verification(self):
+        self.routes['https://example.com/robots.txt'] = requests.exceptions.SSLError('hostname mismatch')
+        with self.assertRaises(FetchError) as caught:
+            self.fetcher.fetch('https://example.com/feed.xml')
+        self.assertEqual(caught.exception.failure_kind, 'tls_error')
+        self.assertEqual(caught.exception.retry_after, 300)
+        self.assertEqual(caught.exception.host, 'example.com')
+        self.assertEqual(self.urls(), ['https://example.com/robots.txt'])
+        self.assertTrue(self.requests[0][1]['verify'])
+
+    def test_blocked_path_does_not_block_allowed_paths_or_keep_stale_rules(self):
+        self.allow_robots(body=b'User-agent: *\nDisallow: /feed.xml\nAllow: /\n')
+        self.routes['https://example.com/post'] = response(b'article')
+        with self.assertRaises(FetchError) as caught:
+            self.fetcher.fetch('https://example.com/feed.xml')
+        self.assertEqual(caught.exception.failure_kind, 'robots_denied')
+        self.assertEqual(self.fetcher.fetch('https://example.com/post').body, b'article')
+        self.routes['https://example.com/robots.txt'] = response(b'User-agent: *\nAllow: /\n')
+        self.routes['https://example.com/feed.xml'] = response(b'feed now allowed')
+        self.fetcher._robots_cache['https://example.com'] = (0, None)
+        self.assertEqual(self.fetcher.fetch('https://example.com/feed.xml').body, b'feed now allowed')
 
     def test_missing_robots_is_allowed_and_cached(self):
         for status in (404, 410):
@@ -378,8 +522,10 @@ class FetchingTests(unittest.TestCase):
                     fetcher.fetch("https://example.com/")
                 self.assertTrue(caught.exception.retryable)
                 self.assertNotIn("secret", str(caught.exception))
-                if isinstance(failure, int):
-                    self.assertEqual(caught.exception.retry_after, 45)
+                self.assertEqual(caught.exception.retry_after, 300)
+                with self.assertRaises(FetchError):
+                    fetcher.fetch("https://example.com/")
+                fetcher._cooldowns.clear()  # Model expiry before recovery.
                 self.assertEqual(fetcher.fetch("https://example.com/").body, b"ok")
 
     def test_robots_ttl_and_sitemaps(self):
@@ -398,6 +544,18 @@ class FetchingTests(unittest.TestCase):
             self.fetcher.robots_sitemaps("http://localhost/secret")
         self.assertFalse(caught.exception.retryable)
         self.assertEqual(self.send.call_count, 0)
+
+    def test_waiting_on_a_robots_cooldown_does_not_slide_its_deadline(self):
+        self.routes['https://example.com/robots.txt'] = response(status=503)
+        with patch('time.monotonic', return_value=100):
+            with self.assertRaises(FetchError) as first:
+                self.fetcher.fetch('https://example.com/first')
+        self.assertEqual(first.exception.retry_after, 300)
+        with patch('time.monotonic', return_value=110):
+            with self.assertRaises(FetchError) as second:
+                self.fetcher.fetch('https://example.com/second')
+        self.assertEqual(second.exception.retry_after, 290)
+        self.assertEqual(self.urls(), ['https://example.com/robots.txt'])
 
     def test_robots_redirect_is_bounded_and_checks_internal_target(self):
         self.routes["https://example.com/robots.txt"] = lambda: response(status=302, headers={"Location": "/robots.txt"})
@@ -491,7 +649,7 @@ class FetchingTests(unittest.TestCase):
         self.assertEqual(self.send.call_count, 1)
 
     def test_crawl_delay_and_request_rate_are_respected(self):
-        for directive, expected in ((b"Crawl-delay: 7", 7), (b"Request-rate: 1/9", 9)):
+        for directive, expected in ((b"Crawl-delay: 7", 7), (b"Crawl-delay: 2.5", 2.5), (b"Request-rate: 1/9", 9)):
             with self.subTest(directive=directive):
                 now = [100.0]
                 self.allow_robots(body=b"User-agent: *\n" + directive + b"\nAllow: /\n")
@@ -536,6 +694,48 @@ class FetchingTests(unittest.TestCase):
         self.assertTrue(caught.exception.retryable)
         self.assertEqual(caught.exception.retry_after, 120)
         sleep.assert_not_called()
+
+    def test_long_robots_delay_finishes_after_restart_without_refetch_loop(self):
+        self.allow_robots(body=b'User-agent: *\nCrawl-delay: 120\nAllow: /\n')
+        self.routes['https://example.com/'] = lambda: response(b'ok')
+        with tempfile.TemporaryDirectory() as directory:
+            cache_path = Path(directory) / 'http.sqlite3'
+            with patch('time.time', return_value=1000), patch('time.monotonic', return_value=100):
+                first = Fetcher(cache_path=cache_path)
+                with self.assertRaises(FetchError) as caught:
+                    first.fetch('https://example.com/')
+                self.assertEqual(caught.exception.retry_after, 120)
+                first.close()
+            with patch('time.time', return_value=1121), patch('time.monotonic', return_value=500):
+                restarted = Fetcher(cache_path=cache_path)
+                self.assertEqual(restarted.fetch('https://example.com/').body, b'ok')
+                restarted.close()
+                restarted.close()
+            self.assertEqual(self.urls(), ['https://example.com/robots.txt', 'https://example.com/'])
+
+    def test_default_spacing_survives_process_restart(self):
+        self.routes['https://example.com/'] = lambda: response(b'ok')
+        now = [100.0]
+        with tempfile.TemporaryDirectory() as directory, \
+                patch('time.time', side_effect=lambda: now[0] + 1000), \
+                patch('time.monotonic', side_effect=lambda: now[0]), \
+                patch('time.sleep', side_effect=lambda delay: now.__setitem__(0, now[0] + delay)) as sleep:
+            path = Path(directory) / 'http.sqlite3'
+            first = Fetcher(cache_path=path)
+            first.fetch('https://example.com/', check_robots=False)
+            first.close()
+            now[0] += 0.5
+            restarted = Fetcher(cache_path=path)
+            restarted.fetch('https://example.com/', check_robots=False)
+            restarted.close()
+            sleep.assert_called_once_with(4.5)
+
+    def test_unsupported_day_long_policy_stops_without_fetching_the_post(self):
+        self.allow_robots(body=b'User-agent: *\nCrawl-delay: 86400\nAllow: /\n')
+        with self.assertRaises(FetchError) as caught:
+            self.fetcher.fetch('https://example.com/')
+        self.assertFalse(caught.exception.retryable)
+        self.assertEqual(self.urls(), ['https://example.com/robots.txt'])
 
     def test_body_deadline_cannot_be_extended_by_small_chunks(self):
         now = [100.0]

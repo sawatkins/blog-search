@@ -101,7 +101,9 @@ class StorageTests(unittest.TestCase):
         self.assertEqual(before, self.query('SELECT * FROM pages'))
         self.assertEqual([], self.store.index_batch())
         with self.assertRaises(psycopg2.IntegrityError):
-            self.query("INSERT INTO pages (url, fingerprint) VALUES ('https://duplicate.example/', 'legacy')")
+            self.query("INSERT INTO pages (url, fingerprint) VALUES ('https://legacy.example/', 'another-body')")
+        self.query("INSERT INTO pages (url, fingerprint) VALUES ('https://distinct.example/', 'legacy')")
+        self.query('DROP TABLE crawl_job_sources')
         self.query('DROP TABLE crawl_jobs')
         with Store(self.dsn):
             self.assertIsNone(self.query("SELECT to_regclass('crawl_jobs') AS table_name")[0]['table_name'])
@@ -123,6 +125,26 @@ class StorageTests(unittest.TestCase):
             store.status()
         self.assertTrue(store._pool.closed)
         store.close()
+
+    def test_migration_upgrades_legacy_domains_and_preserves_feed_checks(self):
+        self.query('DROP TABLE domains')
+        self.query('''CREATE TABLE domains (
+            domain TEXT PRIMARY KEY, last_feed_check DATE,
+            date_added TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+        )''')
+        self.query("INSERT INTO domains (domain, last_feed_check) VALUES ('article.example', '2025-04-01')")
+        before = self.query('SELECT domain, last_feed_check, date_added FROM domains')
+
+        self.store.migrate()
+        self.store.migrate()
+        self.assertEqual(before, self.query('SELECT domain, last_feed_check, date_added FROM domains'))
+        self.assertIsNone(self.query('SELECT next_allowed_scrape FROM domains')[0]['next_allowed_scrape'])
+
+        job = self.claimed()
+        self.store.fail(job, 'HTTP status 429', status_code=429)
+        cooldown = self.query('SELECT next_allowed_scrape > NOW() AS paused FROM domains')[0]
+        self.assertTrue(cooldown['paused'])
+        self.assertEqual([], self.store.claim())
 
     def test_connection_and_statement_timeouts_and_cancel_recovery(self):
         with self.store._transaction() as cursor:
@@ -150,8 +172,8 @@ class StorageTests(unittest.TestCase):
         job = self.claimed()
         before = self.row(job)
         original = self.store._save_page
-        def disconnect(cursor, page):
-            result = original(cursor, page)
+        def disconnect(cursor, page, **kwargs):
+            result = original(cursor, page, **kwargs)
             self.query('SELECT pg_terminate_backend(%s)', (cursor.connection.get_backend_pid(),))
             return result
         with patch.object(self.store, '_save_page', side_effect=disconnect) as save:
@@ -189,6 +211,247 @@ class StorageTests(unittest.TestCase):
         self.assertEqual(0, self.store.enqueue([self.job(row['status']) for row in before]))
         self.assertEqual(before, self.query('SELECT * FROM crawl_jobs ORDER BY id'))
 
+    def source(self, name):
+        return self.job(name, kind='feed', priority=100)
+
+    def test_source_removal_pauses_descendants_and_preserves_saved_content(self):
+        a, b = self.source('a'), self.source('b')
+        self.store.reconcile_sources([a, b])
+        feeds = {task['url']: task for task in self.store.claim(2)}
+        child = self.job('history', payload={'root': 'https://history.example/'})
+        self.store.complete(feeds[a['url']], links=[child])
+        self.store.complete(feeds[b['url']])
+        active = self.store.claim(1)[0]
+        self.store.complete(active, page=self.page(url=child['url']))
+        before = self.query('SELECT * FROM pages')
+        self.make_due(active)
+        self.store.reconcile_sources([b], allow_large_removal=True)
+        self.assertEqual(self.store.claim(), [])
+        self.assertEqual(self.query('SELECT * FROM pages'), before)
+        self.assertEqual(self.store.status()['source_paused_jobs'], 2)
+        self.assertEqual(self.store.status()['due'], 0)
+        self.assertEqual(self.store.status()['sources'], {'active': 1, 'inactive': 1})
+
+    def test_pilot_sync_does_not_remove_other_sources_but_does_exclude_comics(self):
+        a, b = self.source('a'), self.source('b')
+        self.store.reconcile_sources([a])
+        self.store.reconcile_sources([b], replace=False)
+        self.assertEqual(self.store.status()['sources']['active'], 2)
+        self.store.reconcile_sources([b], excluded=[a['url']], replace=False)
+        self.assertEqual(self.store.status()['sources']['active'], 1)
+        self.assertEqual([task['url'] for task in self.store.claim()], [b['url']])
+        self.assertEqual(self.query('SELECT reason FROM crawl_sources WHERE feed_url = %s', (a['url'],))[0]['reason'], 'comic')
+
+    def test_suspicious_source_drop_rolls_back_the_entire_sync(self):
+        originals = [self.source(str(number)) for number in range(10)]
+        self.store.reconcile_sources(originals)
+        before = self.query('SELECT * FROM crawl_sources ORDER BY feed_url')
+        jobs = self.query('SELECT * FROM crawl_jobs ORDER BY id')
+        with self.assertRaises(ValueError):
+            self.store.reconcile_sources([self.source('new')])
+        self.assertEqual(self.query('SELECT * FROM crawl_sources ORDER BY feed_url'), before)
+        self.assertEqual(self.query('SELECT * FROM crawl_jobs ORDER BY id'), jobs)
+        self.store.reconcile_sources(originals[:8])  # Exactly 20% is allowed.
+        self.assertEqual(self.store.status()['sources']['inactive'], 2)
+
+    def test_returning_source_is_immediately_rechecked_without_deleting_progress(self):
+        a, b = self.source('a'), self.source('b')
+        self.store.reconcile_sources([a, b])
+        feeds = {task['url']: task for task in self.store.claim(2)}
+        for task in feeds.values():
+            self.store.complete(task, etag='old')
+        self.store.reconcile_sources([b], allow_large_removal=True)
+        self.store.reconcile_sources([a, b])
+        again = self.store.claim(1)[0]
+        self.assertEqual(again['id'], feeds[a['url']]['id'])
+        self.assertIsNone(again['etag'])
+
+    def test_shared_page_stays_active_when_one_source_is_removed(self):
+        a, b = self.source('a'), self.source('b')
+        self.store.reconcile_sources([a, b])
+        child = self.job('shared', priority=90)
+        for task in self.store.claim(2):
+            self.store.complete(task, links=[child])
+        self.store.reconcile_sources([b], excluded=[a['url']])
+        task = self.store.claim(1)[0]
+        self.assertEqual(task['url'], child['url'])
+        self.assertTrue(self.store.complete(task, page=self.page(url=child['url'])))
+        self.assertEqual(len(self.store.index_batch()), 1)
+
+    def test_source_removed_during_fetch_cannot_commit_results_or_release_host_early(self):
+        a, b = self.source('a'), self.source('b')
+        self.store.reconcile_sources([a, b])
+        feeds = {task['url']: task for task in self.store.claim(2)}
+        active = feeds[a['url']]
+        before = self.row(active)
+        self.store.reconcile_sources([b], excluded=[a['url']])
+        self.assertEqual(self.row(active)['lease_token'], before['lease_token'])
+        self.assertEqual(self.row(active)['status'], 'running')
+        child = self.job('old')
+        self.assertFalse(self.store.complete(active, links=[child], page=self.page()))
+        self.assertEqual(self.query('SELECT * FROM pages'), [])
+        self.assertEqual(self.query("SELECT id FROM crawl_jobs WHERE kind = 'page'"), [])
+        self.assertEqual(self.row(active)['status'], 'pending')
+
+    def test_removed_source_failure_does_not_pause_an_active_source_host(self):
+        a, b = self.source('a'), self.source('b')
+        self.store.reconcile_sources([a, b])
+        feeds = {task['url']: task for task in self.store.claim(2)}
+        self.store.reconcile_sources([b], excluded=[a['url']])
+        self.assertFalse(self.store.fail(feeds[a['url']], 'rate limit', status_code=429, retry_after=120))
+        self.assertEqual(self.query('SELECT * FROM domains'), [])
+
+    def test_shared_archive_is_revisited_so_descendants_gain_the_new_source(self):
+        a, b = self.source('a'), self.source('b')
+        self.store.reconcile_sources([a, b])
+        feeds = {task['url']: task for task in self.store.claim(2)}
+        root = 'https://shared.example/'
+        archive = self.job('shared', kind='archive', priority=20, payload={'root': root})
+        child = self.job('old', payload={'root': root})
+        self.store.complete(feeds[a['url']], links=[archive])
+        first = self.store.claim(1)[0]
+        self.store.complete(first, links=[child], etag='cached')
+        self.store.complete(feeds[b['url']], links=[archive])
+        self.store.reconcile_sources([b], excluded=[a['url']])
+        repeated = self.store.claim(1)[0]
+        self.assertEqual(repeated['id'], first['id'])
+        self.assertIsNone(repeated['etag'])
+        self.store.complete(repeated, links=[child])
+        self.assertEqual(self.store.claim(1)[0]['url'], child['url'])
+
+    def test_shared_archive_304_in_flight_is_revisited_with_new_source(self):
+        a, b = self.source('a'), self.source('b')
+        self.store.reconcile_sources([a, b])
+        feeds = {task['url']: task for task in self.store.claim(2)}
+        archive = self.job('shared', kind='archive', payload={'root': 'https://shared.example/'})
+        self.store.complete(feeds[a['url']], links=[archive])
+        first = self.store.claim(1)[0]
+        self.store.complete(first, etag='cached')
+        self.make_due(first)
+        running = self.store.claim(1)[0]
+        self.store.complete(feeds[b['url']], links=[archive])
+        self.store.complete(running, not_modified=True)
+        again = self.store.claim(1)[0]
+        self.assertEqual(again['id'], running['id'])
+        self.assertIsNone(again['etag'])
+
+    def test_shared_skipped_discovery_page_can_propagate_its_new_source(self):
+        a, b = self.source('a'), self.source('b')
+        self.store.reconcile_sources([a, b])
+        feeds = {task['url']: task for task in self.store.claim(2)}
+        listing = self.job('shared', payload={'root': 'https://shared.example/'})
+        self.store.complete(feeds[a['url']], links=[listing])
+        first = self.store.claim(1)[0]
+        self.store.complete(first, skip_reason='no_extractable_text')
+        self.store.complete(feeds[b['url']], links=[listing])
+        self.store.reconcile_sources([b], excluded=[a['url']])
+        self.assertEqual(self.store.claim(1)[0]['id'], first['id'])
+
+    def test_manual_jobs_remain_independent_and_missing_source_rolls_back(self):
+        independent = self.job('manual')
+        self.store.enqueue([independent])
+        self.store.reconcile_sources([self.source('a')])
+        self.assertTrue(self.query("SELECT manual FROM crawl_jobs WHERE kind = 'page'")[0]['manual'])
+        with self.assertRaises(psycopg2.IntegrityError):
+            self.store.enqueue([{**self.job('orphan'), 'manual': False, 'source_urls': ['missing']}])
+        self.assertEqual(len(self.query('SELECT * FROM crawl_jobs')), 2)
+
+    def test_retry_commands_cannot_reactivate_removed_source_work(self):
+        a, b = self.source('a'), self.source('b')
+        self.store.reconcile_sources([a, b])
+        feeds = {task['url']: task for task in self.store.claim(2)}
+        self.store.complete(feeds[b['url']])
+        self.store.complete(feeds[a['url']], links=[self.job('old')])
+        task = self.store.claim(1)[0]
+        self.store.fail(task, 'HTTP 404', retryable=False)
+        self.store.reconcile_sources([b], excluded=[a['url']])
+        self.store.retry_failed()
+        self.store.retry_skipped()
+        self.assertEqual(self.store.claim(), [])
+
+    def test_shallower_discovery_reopens_depth_cutoff_without_charging_again(self):
+        payload = {'root': 'https://article.example/', 'depth': 5}
+        original = self.job(payload=payload)
+        self.store.enqueue([original])
+        task = self.store.claim(1)[0]
+        self.store.complete(task, skip_reason='no_extractable_text', etag='old')
+        self.assertEqual(0, self.store.enqueue([{**original, 'payload': {**payload, 'depth': 1}}]))
+        updated = self.row(task)
+        self.assertEqual(updated['payload']['depth'], 1)
+        self.assertEqual(updated['status'], 'pending')
+        self.assertIsNone(updated['etag'])
+        self.assertEqual(self.store.status()['backfill']['discovered'], 1)
+        self.assertEqual(self.store.claim(1)[0]['id'], task['id'])
+
+    def test_running_shallower_discovery_keeps_lease_then_revisits_with_full_body(self):
+        payload = {'root': 'https://article.example/', 'depth': 5}
+        original = self.job(kind='archive', payload=payload)
+        self.store.enqueue([original])
+        task = self.store.claim(1)[0]
+        self.store.enqueue([{**original, 'payload': {**payload, 'depth': 0}}])
+        self.assertEqual(self.row(task)['lease_token'], str(task['lease_token']))
+        self.assertEqual(self.row(task)['status'], 'running')
+        self.assertTrue(self.store.complete(task, etag='stale-depth-response'))
+        self.assertIsNone(self.row(task)['etag'])
+        again = self.store.claim(1)[0]
+        self.assertEqual(again['payload']['depth'], 0)
+        self.store.complete(again, etag='fresh')
+        self.assertEqual(self.store.claim(1), [])
+
+    def test_shallower_discovery_preserves_terminal_failure_and_retry_time(self):
+        payload = {'root': 'https://article.example/', 'depth': 5}
+        original = self.job(payload=payload)
+        self.store.enqueue([original])
+        task = self.store.claim(1)[0]
+        self.store.fail(task, 'retry later')
+        before = self.row(task)
+        self.store.enqueue([{**original, 'payload': {**payload, 'depth': 2}}])
+        after = self.row(task)
+        self.assertEqual(after['due_at'], before['due_at'])
+        self.assertEqual(after['attempts'], before['attempts'])
+        self.assertEqual(after['payload']['depth'], 2)
+        self.make_due(task)
+        task = self.store.claim(1)[0]
+        self.store.fail(task, 'HTTP 404', retryable=False)
+        before = self.row(task)
+        self.store.enqueue([{**original, 'payload': {**payload, 'depth': 0}}])
+        self.assertEqual(self.row(task), before)
+
+    def test_best_depth_within_batch_and_invalid_depth_rolls_back(self):
+        payload = {'root': 'https://article.example/', 'depth': 5}
+        original = self.job(payload=payload)
+        self.store.enqueue([original, {**original, 'payload': {**payload, 'depth': 1}}])
+        self.assertEqual(self.store.claim(1)[0]['payload']['depth'], 1)
+        for depth in (-1, '1', True):
+            with self.assertRaises(ValueError):
+                self.store.enqueue([self.job('invalid', payload={'depth': depth})])
+
+    def test_feed_pagination_is_scoped_budgeted_and_not_checked_daily(self):
+        root = 'https://example.org/'
+        self.store.set_backfill_budget(root, 1)
+        task = self.job(kind='feed_page', payload={'root': root, 'depth': 1}, priority=40)
+        self.assertEqual(1, self.store.enqueue([task]))
+        self.assertEqual(0, self.store.enqueue([{**task, 'url': 'https://other.example/feed?page=3'}]))
+        active = self.store.claim(1)[0]
+        self.assertEqual(self.row(active)['scope'], sha256(root.encode()).hexdigest())
+        self.store.complete(active, etag='old')
+        self.assert_delay(active, 30 * 86400)
+        report = self.store.status(root=root)
+        self.assertEqual(report['site']['coverage'], 'budget_limited')
+        self.assertEqual(report['site']['visited'], 1)
+        self.assertEqual(report['site']['due'], 0)
+        self.store.set_backfill_budget(root, 2)
+        self.assertEqual(self.store.claim(1)[0]['id'], active['id'])
+
+    def test_migration_extends_legacy_kind_constraint_without_losing_jobs(self):
+        task = self.claimed()
+        self.query('ALTER TABLE crawl_jobs DROP CONSTRAINT crawl_jobs_kind_check')
+        self.query("ALTER TABLE crawl_jobs ADD CONSTRAINT crawl_jobs_kind_check CHECK (kind IN ('feed', 'page', 'sitemap', 'archive'))")
+        before = self.row(task)
+        self.store.migrate()
+        self.assertEqual(self.row(task), before)
+        self.assertEqual(self.store.enqueue([self.job('pagination', kind='feed_page')]), 1)
+
     def test_enqueue_abort_recovers_and_rolls_back_earlier_batches(self):
         jobs = [self.job(str(number)) for number in range(500)]
         with self.assertRaises(psycopg2.IntegrityError):
@@ -210,7 +473,7 @@ class StorageTests(unittest.TestCase):
         claimed = self.store.claim(8)
         self.assertEqual(['high.example', 'low.example', 'tied.example'], [job['host'] for job in claimed])
         self.assertEqual({'id', 'kind', 'url', 'host', 'priority', 'payload', 'attempts',
-                          'lease_token', 'etag', 'last_modified'}, set(claimed[0]))
+                          'lease_token', 'etag', 'last_modified', 'resolved_url'}, set(claimed[0]))
         self.assertTrue(all(job['attempts'] == 1 for job in claimed))
         self.assertEqual([], self.store.claim())
         self.assertTrue(self.store.complete(claimed[0]))
@@ -276,12 +539,12 @@ class StorageTests(unittest.TestCase):
         self.assertEqual(1, self.store.status()['backfill_limited'])
         sitemap = self.store.claim(1)[0]
         running = self.row(sitemap)
-        self.assertEqual(1, self.store.set_backfill_budget(root, 5))
+        self.assertEqual(2, self.store.set_backfill_budget(root, 5))
         self.assertEqual(running, self.row(sitemap))
         self.assertEqual(0, self.store.status()['backfill_limited'])
         self.assertIsNone(self.row(parent)['etag'])
         self.store.complete(sitemap, not_modified=True)
-        self.assertEqual(2, self.store.set_backfill_budget(root, 5))
+        self.assertEqual(3, self.store.set_backfill_budget(root, 5))
         self.assertIsNone(self.row(sitemap)['etag'])
         self.assertIsNone(self.row(sitemap)['last_modified'])
         parent = self.store.claim(1)[0]
@@ -298,6 +561,22 @@ class StorageTests(unittest.TestCase):
         self.assertEqual(1, self.store.set_backfill_budget(roots[0], 12000))
         self.assertEqual(other, self.query('SELECT * FROM crawl_jobs WHERE id = %s', (other['id'],))[0])
         self.assertEqual(roots[0], self.store.claim(1)[0]['payload']['root'])
+
+    def test_backfill_resume_revisits_historical_pages_but_not_fresh_or_other_blogs(self):
+        root = 'https://shared.example/alice/'
+        tasks = [self.job('shared', url=root + 'chronicle/', priority=10, payload={'root': root}),
+                 self.job('shared', url=root + 'new/', priority=90, payload={'root': root}),
+                 self.job('shared', url='https://shared.example/bob/old/', priority=10,
+                          payload={'root': 'https://shared.example/bob/'})]
+        self.store.enqueue(tasks)
+        self.query("UPDATE crawl_jobs SET due_at = NOW() + INTERVAL '30 days', etag = 'tag', last_modified = 'date'")
+        before = self.query('SELECT * FROM crawl_jobs ORDER BY id')
+        self.assertEqual(1, self.store.set_backfill_budget(root, 200))
+        after = self.query('SELECT * FROM crawl_jobs ORDER BY id')
+        self.assertIsNone(after[0]['etag'])
+        self.assertIsNone(after[0]['last_modified'])
+        self.assertEqual(before[1:], after[1:])
+        self.assertEqual(tasks[0]['url'], self.store.claim(1)[0]['url'])
 
     def test_claims_are_exclusive_across_processes_and_normalize_hosts(self):
         self.store.enqueue([self.job(str(number), url='https://SHARED.example./' + str(number))
@@ -379,7 +658,7 @@ class StorageTests(unittest.TestCase):
     def test_skip_and_explicit_page_reevaluation(self):
         page = self.claimed()
         self.query("UPDATE crawl_jobs SET etag = 'cached-tag', last_modified = 'cached-date' WHERE id = %s", (page['id'],))
-        self.store.complete(page, skip_reason='not a post')
+        self.store.complete(page, skip_reason='no_extractable_text')
         feed = self.claimed(name='feed', kind='feed')
         self.store.complete(feed, skip_reason='blocked')
         self.assertEqual('skipped', self.row(page)['status'])
@@ -397,7 +676,77 @@ class StorageTests(unittest.TestCase):
         self.make_due(feed)
         self.assertEqual(feed['id'], self.store.claim(1)[0]['id'])
 
-    def test_failure_backoff_limits_retry_after_and_terminal_retries(self):
+    def test_extraction_retry_is_bounded_and_preserves_other_skips(self):
+        for name, reason in (('empty-a', 'no_extractable_text'), ('empty-b', 'no_extractable_text'),
+                             ('archive', 'archive_listing'), ('policy', 'noindex'),
+                             ('contact', 'utility_page'), ('image', 'unsupported_content_type')):
+            task = self.claimed(name=name)
+            self.store.complete(task, skip_reason=reason)
+        self.assertEqual(self.store.retry_skipped(limit=1), 1)
+        skipped = self.query("SELECT error, COUNT(*) AS count FROM crawl_jobs WHERE status = 'skipped' GROUP BY error")
+        self.assertEqual({row['error']: row['count'] for row in skipped}, {
+            'no_extractable_text': 1, 'archive_listing': 1, 'noindex': 1,
+            'utility_page': 1, 'unsupported_content_type': 1,
+        })
+        self.assertEqual(self.store.retry_skipped(limit=100), 1)
+        self.assertEqual(self.store.retry_skipped(), 0)
+        for limit in (0, -1):
+            with self.assertRaises(ValueError):
+                self.store.retry_skipped(limit=limit)
+
+    def test_extraction_retry_leaves_removed_source_jobs_unchanged(self):
+        source = self.source('removed')
+        self.store.reconcile_sources([source])
+        feed = self.store.claim(1)[0]
+        self.store.complete(feed, links=[self.job('empty')])
+        page = self.store.claim(1)[0]
+        self.store.complete(page, skip_reason='no_extractable_text')
+        self.store.reconcile_sources([self.source('retained')], excluded=[source['url']])
+        before = self.row(page)
+        self.assertEqual(self.store.retry_skipped(), 0)
+        self.assertEqual(self.row(page), before)
+
+    def test_run_level_deferral_refunds_attempt_and_preserves_content_and_validators(self):
+        task, outbox = self.save()
+        self.make_due(task)
+        self.query("UPDATE crawl_jobs SET attempts = 7, etag = 'known', last_modified = 'yesterday' WHERE id = %s",
+                   (task['id'],))
+        task = self.store.claim(1)[0]
+        self.assertEqual(task['attempts'], 8)
+        self.assertTrue(self.store.defer(task, 'Crawler stopped: internal error'))
+        row = self.row(task)
+        self.assertEqual((row['status'], row['attempts'], row['etag'], row['last_modified']),
+                         ('pending', 7, 'known', 'yesterday'))
+        self.assertIsNone(row['lease_token'])
+        self.assertIsNone(row['lease_until'])
+        self.assert_delay(task, 300)
+        self.assertIn('internal error', row['error'])
+        self.assertEqual(self.store.index_batch(), [outbox])
+        self.assertEqual(len(self.query('SELECT * FROM pages')), 1)
+        self.assertFalse(self.store.defer(task, 'duplicate acknowledgement'))
+        self.assertEqual(self.row(task), row)
+
+    def test_run_level_deferral_cannot_release_an_expired_or_replaced_lease(self):
+        old = self.claimed()
+        self.expire(old)
+        self.assertFalse(self.store.defer(old, 'expired'))
+        current = self.store.claim(1)[0]
+        before = self.row(current)
+        self.assertFalse(self.store.defer(old, 'stale'))
+        self.assertEqual(self.row(current), before)
+        self.assertTrue(self.store.defer(current, 'current'))
+
+    def test_run_level_deferral_respects_source_removal(self):
+        source = self.source('removed')
+        self.store.reconcile_sources([source])
+        feed = self.store.claim(1)[0]
+        self.store.reconcile_sources([self.source('retained')], excluded=[source['url']])
+        self.assertFalse(self.store.defer(feed, 'run stopped'))
+        self.assertNotEqual(self.row(feed)['status'], 'running')
+        claimed = self.store.claim()
+        self.assertNotIn(feed['id'], [task['id'] for task in claimed])
+
+    def test_failure_backoff_preserves_retry_after_and_terminal_retries(self):
         job = self.claimed()
         for attempt in range(1, 9):
             self.assertEqual(attempt, job['attempts'])
@@ -412,7 +761,7 @@ class StorageTests(unittest.TestCase):
         job = self.store.claim(1)[0]
         self.assertEqual(1, job['attempts'])
         self.store.fail(job, 'rate limited', retry_after=timedelta(days=10))
-        self.assert_delay(job, 86400)
+        self.assert_delay(job, 10 * 86400)
         self.make_due(job)
         self.query('UPDATE domains SET next_allowed_scrape = NOW() WHERE domain = %s', (job['host'],))
         job = self.store.claim(1)[0]
@@ -458,12 +807,129 @@ class StorageTests(unittest.TestCase):
         self.assertFalse(self.store.fail(job, 'stale', retry_after=86400))
         self.assertEqual(before, self.query('SELECT next_allowed_scrape FROM domains')[0])
 
+    def test_redirect_cools_actual_destination_and_restores_from_database(self):
+        task = self.claimed()
+        self.store.fail(task, 'HTTP 429', status_code=429, retry_after=172800, host='destination.example')
+        with Store(self.dsn) as restarted:
+            cooldowns = restarted.host_cooldowns()
+        self.assertNotIn(task['host'], cooldowns)
+        self.assertAlmostEqual(cooldowns['destination.example'], 172800, delta=5)
+        self.store.enqueue([self.job('destination')])
+        self.assertEqual(self.store.claim(), [])
+
+    def test_dead_feeds_are_rechecked_monthly_not_each_daily_run(self):
+        for status in (404, 410):
+            feed = self.claimed(name='feed' + str(status), kind='feed')
+            self.store.fail(feed, 'HTTP error', retryable=False, status_code=status)
+            self.assertEqual(self.row(feed)['status'], 'pending')
+            self.assert_delay(feed, 30 * 86400)
+
+    def test_robots_denials_are_monthly_for_feeds_and_posts_without_a_host_ban(self):
+        for kind in ('feed', 'page'):
+            with self.subTest(kind=kind):
+                task = self.claimed(name=kind + '-robots', kind=kind)
+                self.store.fail(task, 'Blocked by robots policy', retryable=False, failure_kind='robots_denied')
+                self.assertEqual(self.row(task)['status'], 'pending')
+                self.assertEqual(self.row(task)['attempts'], 0)
+                self.assert_delay(task, 30 * 86400)
+                self.assertEqual(self.store.claim(), [])
+                # A blocked feed/path must not pause allowed paths on that host.
+                allowed = self.job(kind + '-robots', url=task['url'] + '/allowed')
+                self.store.enqueue([allowed])
+                work = self.store.claim(1)[0]
+                self.assertEqual(work['url'], allowed['url'])
+                self.store.complete(work)
+                self.assertEqual(self.store.host_cooldowns(), {})
+                # Rediscovery does not bring the recheck forward.
+                self.store.enqueue([self.job(kind + '-robots', kind=kind)])
+                self.assert_delay(task, 30 * 86400)
+                self.make_due(task)
+                again = self.store.claim(1)[0]
+                self.assertEqual(again['attempts'], 1)
+                self.store.complete(again)
+
+    def test_tls_failures_recheck_weekly_from_first_failure_and_survive_restart(self):
+        for kind in ('feed', 'page'):
+            with self.subTest(kind=kind):
+                task = self.claimed(name=kind + '-tls', kind=kind)
+                self.store.fail(task, 'TLS/certificate verification failed', failure_kind='tls_error')
+                self.assertEqual(self.row(task)['status'], 'pending')
+                self.assertEqual(self.row(task)['attempts'], 0)
+                self.assert_delay(task, 7 * 86400)
+                with Store(self.dsn) as restarted:
+                    self.assertEqual(restarted.claim(), [])
+                # Even a legacy job with exhausted burst retries gets a recheck.
+                self.make_due(task)
+                again = self.store.claim(1)[0]
+                self.query('UPDATE crawl_jobs SET attempts = 20 WHERE id = %s', (again['id'],))
+                self.store.fail(again, 'TLS failure', failure_kind='tls_error')
+                self.assertEqual(self.row(task)['status'], 'pending')
+                self.assertEqual(self.row(task)['attempts'], 0)
+                self.assert_delay(task, 7 * 86400)
+
+    def test_tls_recheck_does_not_turn_short_robots_cooldown_into_a_week_host_ban(self):
+        task = self.claimed()
+        self.store.fail(task, 'TLS failure fetching robots', failure_kind='tls_error', retry_after=300, host=task['host'])
+        self.assert_delay(task, 7 * 86400)
+        self.assertAlmostEqual(self.store.host_cooldowns()[task['host']], 300, delta=5)
+
+    def test_policy_recheck_does_not_shorten_a_longer_server_retry_after(self):
+        task = self.claimed()
+        self.store.fail(task, 'deferred', failure_kind='robots_denied', retry_after=40 * 86400)
+        self.assert_delay(task, 40 * 86400)
+
+    def test_stale_lease_cannot_change_a_policy_recheck(self):
+        task = self.claimed()
+        self.store.fail(task, 'blocked', retryable=False, failure_kind='robots_denied')
+        before = self.row(task)
+        self.assertFalse(self.store.fail(task, 'stale tls failure', failure_kind='tls_error'))
+        self.assertEqual(self.row(task), before)
+
+    def test_migration_reschedules_only_legacy_robots_denials_and_is_idempotent(self):
+        post = self.claimed(name='blocked-post')
+        self.store.fail(post, 'Blocked by robots policy', retryable=False)
+        feed = self.claimed(name='blocked-feed', kind='feed')
+        self.store.fail(feed, 'Blocked by robots policy', retryable=False)
+        dead = self.claimed(name='dead')
+        self.store.fail(dead, 'HTTP status 404', retryable=False, status_code=404)
+        dead_before = self.row(dead)
+        running = self.claimed(name='running')
+        self.query("UPDATE crawl_jobs SET error = 'Blocked by robots policy' WHERE id = %s", (running['id'],))
+        running_before = self.row(running)
+        self.store.migrate()
+        for task in (post, feed):
+            self.assertEqual(self.row(task)['status'], 'pending')
+            self.assertEqual(self.row(task)['attempts'], 0)
+            self.assert_delay(task, 30 * 86400)
+        before = self.query('SELECT * FROM crawl_jobs ORDER BY id')
+        self.store.migrate()
+        self.assertEqual(self.query('SELECT * FROM crawl_jobs ORDER BY id'), before)
+        self.assertEqual(self.row(dead), dead_before)
+        self.assertEqual(self.row(running), running_before)
+
+    def test_dead_post_tombstones_survive_rediscovery_and_backfill_resume(self):
+        root = 'https://dead.example/'
+        task = self.claimed(name='dead', priority=10, payload={'root': root})
+        self.store.fail(task, 'HTTP 404', retryable=False, status_code=404)
+        before = self.row(task)
+        self.store.set_backfill_budget(root, 200)
+        self.store.enqueue([self.job('dead', priority=90, payload={'root': root})])
+        self.assertEqual(self.row(task)['status'], 'failed')
+        self.assertEqual(self.row(task)['attempts'], before['attempts'])
+        self.assertEqual(self.store.claim(), [])
+
+    def test_exhausted_feed_cannot_override_a_long_retry_after(self):
+        task = self.claimed(kind='feed')
+        self.query('UPDATE crawl_jobs SET attempts = 20 WHERE id = %s', (task['id'],))
+        self.store.fail(task, 'HTTP 503', retry_after=7 * 86400, status_code=503)
+        self.assert_delay(task, 7 * 86400)
+
     def test_complete_rollback_includes_page_links_outbox_and_lease(self):
         job = self.claimed()
         before = self.row(job)
         original = self.store._save_page
-        def broken(cursor, page):
-            original(cursor, page)
+        def broken(cursor, page, **kwargs):
+            original(cursor, page, **kwargs)
             cursor.execute('SELECT 1 / 0')
         with patch.object(self.store, '_save_page', side_effect=broken):
             with self.assertRaises(psycopg2.DataError):
@@ -481,8 +947,8 @@ class StorageTests(unittest.TestCase):
         job = self.claimed()
         written, release = Event(), Event()
         original = self.store._save_page
-        def pause(cursor, page):
-            result = original(cursor, page)
+        def pause(cursor, page, **kwargs):
+            result = original(cursor, page, **kwargs)
             written.set()
             if not release.wait(timeout=15):
                 raise TimeoutError('Test did not release transaction')
@@ -529,7 +995,7 @@ class StorageTests(unittest.TestCase):
         self.assertEqual(old['page_id'], new['page_id'])
         self.assertGreater(new['revision'], old['revision'])
         self.assertEqual('Edited text', new['text'])
-        self.assertEqual({'page_id', 'revision', 'title', 'url', 'date', 'text', 'scraped_on_date'}, set(new))
+        self.assertEqual({'page_id', 'revision', 'operation', 'title', 'url', 'date', 'text', 'scraped_on_date'}, set(new))
         self.assertFalse(self.store.index_done(old['page_id'], old['revision']))
         self.assertFalse(self.store.index_failed(old['page_id'], old['revision'], 'stale'))
         self.assertTrue(self.store.index_done(new['page_id'], new['revision']))
@@ -629,22 +1095,44 @@ class StorageTests(unittest.TestCase):
         self.assertTrue(all(row['attempts'] == 21 for row in remaining))
         self.assertTrue(all(abs(float(row['delay']) - 86400) < 5 for row in remaining))
 
-    def test_duplicate_fingerprints_reuse_canonical_page_and_preserve_history(self):
+    def test_redirected_page_304_refreshes_final_url_and_remembers_validator_target(self):
+        task = self.claimed()
+        final_url = 'https://destination.example/post/'
+        self.store.complete(task, page=self.page(url=final_url), etag='"post"', resolved_url=final_url)
+        self.assertEqual(self.row(task)['resolved_url'], final_url)
+        self.query("UPDATE pages SET scraped_on_date = '2000-01-01'")
+        self.make_due(task)
+        again = self.store.claim(1)[0]
+        self.assertEqual(again['resolved_url'], final_url)
+        self.store.complete(again, not_modified=True)
+        self.assertTrue(self.query("SELECT scraped_on_date > '2000-01-02' AS fresh FROM pages")[0]['fresh'])
+        self.assertEqual(self.row(task)['resolved_url'], final_url)
+
+    def test_http_slash_aliases_update_one_final_article_even_when_text_changes(self):
+        final_url = 'https://article.example/post/'
+        self.store.enqueue([self.job(url='http://article.example/post'), self.job(url=final_url)])
+        first = self.store.claim(1)[0]
+        self.store.complete(first, page=self.page(url=final_url), resolved_url=final_url)
+        second = self.store.claim(1)[0]
+        self.store.complete(second, page=self.page(url=final_url, text='An edited article', fingerprint='edited'),
+                            resolved_url=final_url)
+        self.assertEqual(self.query('SELECT url, text FROM pages'), [{'url': final_url, 'text': 'An edited article'}])
+        self.assertEqual(self.store.status()['outbox'], 1)
+        self.assertEqual(len(self.query('SELECT * FROM crawl_jobs')), 2)
+
+    def test_identical_text_on_unrelated_urls_preserves_both_articles(self):
         _, indexed = self.save()
         self.store.index_done(indexed['page_id'], indexed['revision'])
         alias = self.claimed(name='alias')
         self.store.complete(alias, page=self.page(url=alias['url']))
-        self.assertEqual([{'id': indexed['page_id'], 'url': self.page()['url']}], self.query('SELECT id, url FROM pages'))
-        self.assertEqual([], self.store.index_batch())
-        self.query("INSERT INTO pages (title, url, fingerprint, text) VALUES ('Historical', %s, 'historical', 'Original')",
-                   (alias['url'],))
-        before = self.query('SELECT id, url, fingerprint, title, text FROM pages ORDER BY id')
+        self.assertEqual(2, len(self.query('SELECT * FROM pages')))
+        self.assertEqual(1, len(self.store.index_batch()))
         self.make_due(alias)
-        self.store.complete(self.store.claim(1)[0], page=self.page(url=alias['url']))
-        self.assertEqual(before, self.query('SELECT id, url, fingerprint, title, text FROM pages ORDER BY id'))
-        self.assertEqual([], self.store.index_batch())
-        self.assertEqual('skipped', self.row(alias)['status'])
-        self.assertEqual('duplicate_fingerprint: canonical page ' + str(indexed['page_id']), self.row(alias)['error'])
+        self.store.complete(self.store.claim(1)[0], page=self.page(url=alias['url'], text='Changed article'))
+        self.assertEqual([{'text': self.page()['text']}, {'text': 'Changed article'}],
+                         self.query('SELECT text FROM pages ORDER BY id'))
+        self.assertEqual('pending', self.row(alias)['status'])
+        self.assertIsNone(self.row(alias)['error'])
 
     def test_concurrent_duplicate_pages_are_saved_once(self):
         first, second = self.claimed(), self.claimed(name='second')
@@ -652,11 +1140,75 @@ class StorageTests(unittest.TestCase):
         def finish(job):
             with Store(self.dsn) as store:
                 barrier.wait(timeout=10)
-                return store.complete(job, page=self.page(url=job['url']))
+                return store.complete(job, page=self.page())
         with ThreadPoolExecutor(max_workers=2) as executor:
             self.assertEqual([True, True], list(executor.map(finish, (first, second))))
         self.assertEqual(1, len(self.query('SELECT * FROM pages')))
         self.assertEqual(1, len(self.store.index_batch()))
+
+    def test_matching_text_only_merges_same_path_url_variants_and_alias_survives_edits(self):
+        first_url = 'http://blog.example.org/article'
+        second_url = 'https://blog.example.org/article/'
+        first = self.claimed(url=first_url)
+        self.store.complete(first, page=self.page(url=first_url))
+        first_id = self.query('SELECT id FROM pages')[0]['id']
+        second = self.claimed(url=second_url)
+        self.store.complete(second, page=self.page(url=second_url))
+        self.assertEqual(self.query('SELECT id,url FROM pages'), [{'id': first_id, 'url': second_url}])
+        self.assertEqual(self.query('SELECT * FROM page_aliases'), [{'url': first_url, 'page_id': first_id}])
+        self.make_due(first)
+        self.store.complete(self.store.claim(1)[0], page=self.page(url=first_url, text='Edited article'))
+        self.assertEqual(self.query('SELECT id,text FROM pages'), [{'id': first_id, 'text': 'Edited article'}])
+        self.assertEqual(self.query('SELECT * FROM page_aliases'), [{'url': second_url, 'page_id': first_id}])
+
+    def test_different_short_posts_on_same_host_are_not_merged(self):
+        for slug in ('first', 'second'):
+            url = 'https://blog.example.org/' + slug
+            task = self.claimed(url=url)
+            self.store.complete(task, page=self.page(url=url, text='Good morning!'))
+        self.assertEqual(len(self.query('SELECT * FROM pages')), 2)
+
+    def test_different_content_on_unproven_url_variants_is_not_merged(self):
+        for url, text in (('http://blog.example.org/post', 'First content'),
+                          ('https://blog.example.org/post/', 'Different content')):
+            task = self.claimed(url=url)
+            self.store.complete(task, page=self.page(url=url, text=text))
+        self.assertEqual(len(self.query('SELECT * FROM pages')), 2)
+
+    def test_redirect_of_existing_page_merges_ids_and_durably_deletes_old_index_entry(self):
+        first = self.claimed(url='https://old.example.org/post')
+        self.store.complete(first, page=self.page(url=first['url']))
+        old_id = self.query('SELECT id FROM pages')[0]['id']
+        second = self.claimed(url='https://new.example.org/post')
+        self.store.complete(second, page=self.page(url=second['url'], text='Updated'))
+        target_id = self.query('SELECT id FROM pages WHERE url = %s', (second['url'],))[0]['id']
+        before = {row['page_id']: row for row in self.store.index_batch()}
+        self.make_due(first)
+        self.store.complete(self.store.claim(1)[0], page=self.page(url=second['url'], text='Newest'))
+        self.assertEqual(self.query('SELECT id,text FROM pages'), [{'id': target_id, 'text': 'Newest'}])
+        operations = {row['page_id']: row for row in self.store.index_batch()}
+        self.assertEqual(operations[old_id]['operation'], 'delete')
+        self.assertEqual(operations[target_id]['operation'], 'index')
+        self.assertGreater(operations[old_id]['revision'], before[old_id]['revision'])
+        self.assertFalse(self.store.index_done(old_id, before[old_id]['revision']))
+        self.assertEqual(self.query('SELECT * FROM page_aliases'), [{'url': first['url'], 'page_id': target_id}])
+        self.store.migrate()
+        self.assertEqual(self.store.index_batch(), list(operations.values()))
+
+    def test_new_titles_are_cleaned_even_when_caller_bypasses_extractor(self):
+        task = self.claimed()
+        self.store.complete(task, page=self.page(title='👩🏽‍💻  Hello'))
+        self.assertEqual(self.query('SELECT title FROM pages'), [{'title': 'Hello'}])
+
+    def test_304_can_refresh_a_remembered_alias_after_canonical_url_changes(self):
+        first = self.claimed(url='https://blog.example.org/post')
+        self.store.complete(first, page=self.page(url=first['url']), etag='old')
+        second = self.claimed(url=first['url'] + '/')
+        self.store.complete(second, page=self.page(url=second['url']))
+        self.query("UPDATE pages SET scraped_on_date = '2000-01-01'")
+        self.make_due(first)
+        self.store.complete(self.store.claim(1)[0], not_modified=True)
+        self.assertGreater(self.query('SELECT scraped_on_date FROM pages')[0]['scraped_on_date'].year, 2000)
 
     def test_reindex_failure_backoff_status_and_retry_scope(self):
         succeeded, indexed = self.save()
