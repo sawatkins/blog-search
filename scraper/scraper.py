@@ -1,737 +1,181 @@
+"""Small CLI for the crawler. Importing this module never starts services."""
+
+import argparse
+import fcntl
 import json
 import logging
+import math
 import os
-import re
+import signal
 import sys
-from concurrent.futures import ThreadPoolExecutor
+import threading
+import time
 from contextlib import contextmanager
-from datetime import datetime, timezone
-from time import sleep
-from urllib.robotparser import RobotFileParser
+from pathlib import Path
+from urllib.parse import urljoin
 
-import fastfeedparser
-import requests
-import trafilatura
-from courlan import clean_url, get_base_url, is_valid_url
+# Support both python -m scraper.scraper and the old script entry point.
+if __package__ in {None, ""}:
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
 from dotenv import load_dotenv
 from elasticsearch import Elasticsearch
-from lxml import html
-from psycopg2 import Error, pool
 
-from sqs_queue import SQSQueue
+from scraper.content import SMALLWEB_URL, job, source_jobs
+from scraper.fetching import Fetcher, normalize_url
+from scraper.storage import Store
+from scraper.worker import Worker, flush_index
 
-MAX_WORKERS = 100
-
-
-def setup_logger():
-    logs_dir = os.path.join(os.path.dirname(__file__), "logs")
-    os.makedirs(logs_dir, exist_ok=True)
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    log_file = os.path.join(logs_dir, f"{timestamp}_scraper.log")
-
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s - %(threadName)s - %(levelname)s - %(message)s",
-        handlers=[logging.StreamHandler(), logging.FileHandler(log_file)],
-    )
-    return logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
+PROJECT = Path(__file__).resolve().parents[1]
 
 
-logger = setup_logger()
-logging.getLogger("trafilatura").setLevel(logging.WARNING)
-
-
-class Scraper:
-    def __init__(self):
-        load_dotenv()
-        self.connection_pool: pool.ThreadedConnectionPool
-        self.init_pool()
-        self.init_db()
-        self.sqs_queue = SQSQueue()
-        self.existing_stripped_urls = None
-        self.elasticsearch_client: Elasticsearch | None = None
-        self._es_index = "pages"
-        self.init_elasticsearch()
-
-    def init_pool(self):
+@contextmanager
+def process_lock():
+    """This deployment has one host; a file lock prevents overlapping workers."""
+    directory = Path(os.getenv("CRAWLER_STATE_DIR", str(PROJECT / "data" / "crawler")))
+    directory.mkdir(parents=True, exist_ok=True)
+    with (directory / "worker.lock").open("a") as handle:
         try:
-            self.connection_pool = pool.ThreadedConnectionPool(
-                minconn=5,
-                maxconn=150,
-                host=os.getenv("PGHOST"),
-                database=os.getenv("PGDATABASE"),
-                user=os.getenv("PGUSER"),
-                password=os.getenv("PGPASSWORD"),
-                port=os.getenv("PGPORT", 5432),
-                sslmode=os.getenv("PGSSLMODE", "prefer"),
-                channel_binding=os.getenv("PGCHANNELBINDING", "prefer"),
-            )
-            conn = self.connection_pool.getconn()
-            self.connection_pool.putconn(conn)
-        except (Exception, Error) as error:
-            logger.error("Error while creating connection pool: %s", error)
-            sys.exit(1)
-
-    def get_connection(self):
-        if self.connection_pool is None:
-            self.init_pool()
-        return self.connection_pool.getconn()
-
-    def release_connection(self, connection):
-        if self.connection_pool is not None:
-            self.connection_pool.putconn(connection)
-
-    def close_pool(self):
-        if self.connection_pool is not None:
-            self.connection_pool.closeall()
-
-    def __del__(self):
-        self.close_pool()
-
-    def fetch_url_with_requests(self, url: str) -> str:
-        """Fetch URL content using requests library with custom user agent"""
-        headers = {
-            "User-Agent": "BlogSearchBot/1.0 (+https://blogsearch.io/bot)",
-        }
-        try:
-            response = requests.get(url, headers=headers, timeout=12)
-            response.raise_for_status()
-            return response.text
-        except Exception as e:
-            logger.error("Error fetching URL %s: %s", url, e)
-            raise e
-
-    def init_elasticsearch(self):
-        url = os.getenv("ELASTICSEARCH_URL", "http://localhost:9200")
-        try:
-            client = Elasticsearch(url)
-            if not client.ping():
-                logger.warning("Elasticsearch ping failed; indexing disabled")
-                self.elasticsearch_client = None
-                return
-            self.elasticsearch_client = client
-            logger.info("Connected to Elasticsearch at %s (index %s)", url, self._es_index)
-        except Exception as e:
-            logger.warning("Could not connect to Elasticsearch (will skip indexing): %s", e)
-            self.elasticsearch_client = None
-
-    def init_db(self):
-        try:
-            filepath = os.path.join(os.path.dirname(__file__), "..", "db", "schema.sql")
-            with open(filepath, "r") as f:
-                schema = f.read()
-                with self.db_connection() as conn:
-                    with conn.cursor() as cur:
-                        cur.execute(schema)
-                    conn.commit()
-        except (Exception, Error) as error:
-            logger.error("Error while initializing database: %s", error)
-            sys.exit(1)
-
-    def get_smallweb_feeds(self) -> set[str]:
-        """Get list of rss feeds from smallweb project"""
-        feeds_file_url = "https://raw.githubusercontent.com/kagisearch/smallweb/refs/heads/main/smallweb.txt"
-        try:
-            response = requests.get(feeds_file_url)
-            response.raise_for_status()
-
-            return {
-                line.strip().rstrip("/")
-                for line in response.text.splitlines()
-                if line.strip()
-            }
-
-        except Exception as e:
-            logger.error("Error downloading feeds file: %s", e)
-            return set()
-
-    def enqueue_new_feed_entries(self, max_workers: int = MAX_WORKERS):
-        logger.info("Clearing SQS queue before enqueuing new feeds")
-        self.sqs_queue.purge_queue()
-
-        feeds = self.get_smallweb_feeds()
-        if not feeds or len(feeds) == 0:
-            logger.error("No feeds found to process")
-            return
-        # feeds = list(feeds)[6000:6005] # subset for testing
-
-        self.existing_stripped_urls = self.get_existing_and_skipped_urls()
-
-        logger.info(
-            "\nProcessing %d feeds with %d worker threads\n", len(feeds), max_workers
-        )
-
-        with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            executor.map(self.process_feed, feeds)
-
-        logger.info("All feeds processed")
-
-    def get_existing_and_skipped_urls(self) -> dict[str, int]:
-        """Get all existing and skipped urls from the db as stripped"""
-        existing_urls: dict[str, int] = {}
-        try:
-            with self.db_connection() as conn:
-                cursor = conn.cursor()
-                cursor.execute("SELECT url FROM pages")
-                rows = cursor.fetchall()
-                print("rows:", len(rows))
-                print("rows sample:", rows[:2])
-                for row in rows:
-                    if row[0]:
-                        existing_urls[self.get_stripped_url(clean_url(row[0]))] = 1
-                cursor.execute("SELECT stripped_url FROM skipped_urls")
-                skipped_rows = cursor.fetchall()
-                for row in skipped_rows:
-                    if row[0]:
-                        existing_urls[row[0]] = 1
-                cursor.close()
-        except (Exception, Error) as error:
-            logger.error("Error fetching existing URLs: %s", error)
-
-        logger.info("Fetched %d existing URLs from database", len(existing_urls))
-        return existing_urls
-
-    def get_stripped_url(self, url: str) -> str:
-        """Return URL without http(s)://, www., query params, or trailing slash"""
-        return re.sub(r"^(https?://)?(www\.)?", "", url).split("?")[0].rstrip("/")
-
-    def process_feed(self, feed):
-        """Process a single feed, extract new urls and enqueue them"""
-        # logger.info("Processing feed: %s", feed)
-        try:
-            parsed_feed = fastfeedparser.parse(feed)
-            link = parsed_feed.feed.link
-            if not link:
-                logger.warning("Feed link %s not found", feed)
-                return
-            # logger.info("Found %d entries for feed %s", len(parsed_feed.entries), feed)
-        except Exception as e:
-            logger.error("Error parsing feed %s: %s", feed, e)
-            return
-
-        candidate_urls = set()
-        try:
-            for entry in parsed_feed.entries:
-                if hasattr(entry, "link"):
-                    entry_link = clean_url(entry.link)
-                    if not entry_link or not is_valid_url(entry_link):
-                        logger.debug("Skipping invalid URL: %s", entry.link)
-                        continue
-                    if not self.is_blog_post_url(entry_link):
-                        logger.debug("Skipping non-blog URL: %s", entry_link)
-                        continue
-                    candidate_urls.add(entry_link)
-        except Exception as e:
-            logger.error("Error processing feed entries %s: %s", feed, e)
-            return
-
-        if not candidate_urls:
-            logger.info("No valid URLs found for feed %s", link)
-            return
-
-        # Debug logging to show candidate URLs
-        logger.debug("Candidate URLs (first 5): %s", list(candidate_urls)[:5])
-
-        existing_urls = set(self.check_urls_already_exist(candidate_urls))
-        logger.debug("Existing URLs (first 5): %s", list(existing_urls)[:5])
-        new_urls = candidate_urls - existing_urls
-        logger.debug(
-            "Candidate/Existing/New counts: %d / %d / %d",
-            len(candidate_urls),
-            len(existing_urls),
-            len(new_urls),
-        )
-
-        logger.info(
-            "Found %d/%d new URLs (limit 30) for feed %s",
-            len(new_urls),
-            len(candidate_urls),
-            feed,
-        )
-        if new_urls and len(new_urls) > 0:
-            limited_urls = list(new_urls)[:30]  # to avoid too large message size
-            self.sqs_queue.send_message(limited_urls)
-            logger.info(
-                "Sent %d new URLs from %s to the queue", len(limited_urls), link
-            )
-
-    def check_urls_already_exist(self, urls: set) -> set:
-        """Check which urls alreay exist in the database"""
-        for url in urls:
-            if self.get_stripped_url(clean_url(url)) in self.existing_stripped_urls:
-                yield url
-
-    def is_blog_post_url(self, url: str) -> bool:
-        """Basic check if a url follow known non-blog patterns"""
-        if re.search(r"^https?://localhost", url, re.IGNORECASE):
-            return False
-        if re.search(r"^https?://0\.0\.0\.0", url, re.IGNORECASE):
-            return False
-
-        if re.search(r"^https?://youtube.com", url, re.IGNORECASE):
-            return False
-
-        non_blog_patterns = [
-            r"^.*/(about|links|tags|categories|archive|comic|contact)(/.*)?$",
-            r"^.*/(author|tag|category)/[^/]+(/.*)?$",
-            r"^.*/(tag|category)(/.*)?$",
-        ]
-
-        for pattern in non_blog_patterns:
-            if re.search(pattern, url, re.IGNORECASE):
-                return False
-
-        return True
-
-    def scrape(self, max_workers: int = MAX_WORKERS):
-        """Scrape all urls from the queue and save them to the database, multithreaded"""
-        logger.info("Starting scrape with %d worker threads", max_workers)
-
-        with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            for _ in range(max_workers):
-                executor.submit(self.process_message_from_queue)
-
-            executor.shutdown(wait=True)
-
-        logger.info("Scraping complete - no more messages in queue")
-
-    def process_message_from_queue(self):
-        """Process messages from the queue until the queue is empty."""
-        logger.info("Message processor started")
-
-        while True:
-            message = self.sqs_queue.receive_message()
-            if not message:
-                logger.info("No more messages in queue, exiting")
-                return
-
-            try:
-                self.process_single_message(message)
-            except Exception as e:
-                logger.error("Error processing message: %s", e)
-                sleep(3)
-
-    def process_single_message(self, message):
-        """Process a single message from the queue."""
-        try:
-            receipt_handle = message["ReceiptHandle"]
-            body = json.loads(message["Body"])
-            urls = body["urls"]
-
-            # logger.info("Processing message with %d URLs", len(urls))
-
-            visibility_timeout = self.calculate_visibility_timeout(len(urls))
-            self.sqs_queue.change_message_visibility(receipt_handle, visibility_timeout)
-
-            # Check robots.txt once for domain
-            robot_parser = None
-            domain_url = get_base_url(urls[0])
-            robot_parser = self.check_robots_for_domain(domain_url)
-            urls_to_scrape = [
-                url for url in urls if self.robots_allows_scraping(robot_parser, url)
-            ]
-            if not urls_to_scrape or len(urls_to_scrape) == 0:
-                logger.info(
-                    "No URLs allowed by robots.txt for domain %s, deleting message",
-                    domain_url,
-                )
-                self.sqs_queue.delete_message(receipt_handle)
-                return
-
-            logger.info(
-                "Processing %d new URLs for %s (%d original URLs, %d blocked by robots.txt)",
-                len(urls_to_scrape),
-                domain_url,
-                len(urls),
-                len(urls) - len(urls_to_scrape),
-            )
-
-            error_count = 0
-            consecutive_errors = 0
-            sleep_time = 4
-
-            for url in urls_to_scrape:
-                if error_count >= 4:
-                    logger.error(
-                        "Too many errors for %s, skipping and deleting message for",
-                        get_base_url(url),
-                    )
-                    self.sqs_queue.delete_message(receipt_handle)
-                    return
-
-                if consecutive_errors >= 2:
-                    logger.error(
-                        "Too many consecutive errors for %s, backing off",
-                        get_base_url(url),
-                    )
-                    sleep(sleep_time * 2)
-
-                try:
-                    self.scrape_url(url)
-                    consecutive_errors = 0
-                except Exception as e:
-                    error_count += 1
-                    consecutive_errors += 1
-                    logger.error(
-                        "Error scraping %s (consecutive: %d): %s",
-                        url,
-                        consecutive_errors,
-                        e,
-                    )
-
-                sleep(sleep_time)
-
-            self.sqs_queue.delete_message(receipt_handle)
-            logger.info("Deleted message after processing all URLs")
-
-        except Exception as e:
-            logger.error("Error processing message: %s", e)
-
-    def calculate_visibility_timeout(self, num_urls: int) -> int:
-        """Calculate visibility timeout for a message based on the number of urls"""
-        return max(300, num_urls * 20 + 60)  # minimum 5 min
-
-    def check_robots_for_domain(self, domain_url: str) -> RobotFileParser:
-        """Check robots.txt for a domain once per message processing"""
-        rp = RobotFileParser()
-        robots_url = f"{domain_url}/robots.txt"
-        try:
-            rp.set_url(robots_url)
-            rp.read()
-            logger.info("Loaded robots.txt for %s", domain_url)
-            return rp
-        except Exception as e:
-            logger.warning(
-                "Error fetching robots.txt for %s (allowing all): %s", domain_url, e
-            )
-            permissive_rp = RobotFileParser()
-            permissive_rp.set_url(robots_url)
-            permissive_rp.parse([])
-            return permissive_rp
-
-    def robots_allows_scraping(self, robot_parser: RobotFileParser, url: str) -> bool:
-        """Check if robots.txt allows scraping for a specific URL"""
-        return robot_parser.can_fetch("BlogSearchBot", url)
-
-    def scrape_url(self, url: str):
-        """Scrape a single url, save it to the database if it's a blog post"""
-        logger.info("Scraping URL: %s", url)
-
-        try:
-            downloaded_content = self.fetch_url_with_requests(url)
-        except Exception as e:
-            logger.error("Error downloading content for %s: %s", url, e)
-            raise e
-
-        if not downloaded_content:
-            logger.warning("Failed to download content for %s", url)
-            raise Exception("Failed to download content for %s", url)
-
-        # Parse HTML and check if it's readerable
-        try:
-            parsed_tree = html.fromstring(downloaded_content)
-            if not trafilatura.readability_lxml.is_probably_readerable(parsed_tree):
-                logger.warning("Downloaded content for %s is not readerable", url)
-                self.record_skipped_url(url, "not_readerable")
-                return
-        except Exception as e:
-            logger.warning("Error parsing HTML for %s: %s", url, e)
-            return
-
-        extracted = trafilatura.extract(
-            downloaded_content, output_format="json", with_metadata=True, url=url
-        )
-        if not extracted:
-            logger.warning("Failed to extract text for %s", url)
-            return
-
-        extracted_dict = json.loads(extracted)
-        if len(extracted_dict["raw_text"].split()) < 100:
-            logger.warning("Extracted text for %s is too short", url)
-            self.record_skipped_url(url, "too_short")
-            return
-
-        page = {
-            "title": extracted_dict["title"],
-            "url": clean_url(extracted_dict["url"]),
-            "fingerprint": extracted_dict["fingerprint"],
-            "date": extracted_dict["date"],
-            "text": extracted_dict["raw_text"],
-        }
-        logger.info("Attempting to save page: %s", url)
-        self.save_page(page)
-        logger.info("Successfully processed and saved page: %s", url)
-
-    def record_skipped_url(self, url: str, reason: str):
-        """Persist stripped URLs that should be skipped in future runs"""
-        stripped_url = self.get_stripped_url(clean_url(url))
-        if not stripped_url:
-            return
-
-        try:
-            with self.db_connection() as conn:
-                cursor = conn.cursor()
-                cursor.execute(
-                    """
-                        INSERT INTO skipped_urls (stripped_url, reason)
-                        VALUES (%s, %s)
-                        ON CONFLICT (stripped_url) DO UPDATE
-                            SET reason = EXCLUDED.reason
-                    """,
-                    (stripped_url, reason),
-                )
-                conn.commit()
-                cursor.close()
-        except (Exception, Error) as error:
-            logger.error("Error recording skipped URL %s: %s", stripped_url, error)
-        finally:
-            if isinstance(self.existing_stripped_urls, dict):
-                self.existing_stripped_urls[stripped_url] = 1
-
-    def save_page(self, page: dict):
-        """Save a page to the database and index in Elasticsearch."""
-        page_id = None
-        try:
-            with self.db_connection() as conn:
-                cursor = conn.cursor()
-                # Use ON CONFLICT to handle duplicate URLs gracefully
-                cursor.execute(
-                    """
-                    INSERT INTO pages (title, url, fingerprint, date, text)
-                    VALUES (%s, %s, %s, %s, %s)
-                    ON CONFLICT (url) DO UPDATE
-                        SET title = EXCLUDED.title,
-                            fingerprint = EXCLUDED.fingerprint,
-                            date = EXCLUDED.date,
-                            text = EXCLUDED.text,
-                            scraped_on_date = CURRENT_TIMESTAMP
-                    RETURNING id
-                """,
-                    (
-                        page["title"],
-                        page["url"],
-                        page["fingerprint"],
-                        page["date"],
-                        page["text"],
-                    ),
-                )
-
-                result = cursor.fetchone()
-                if result:
-                    page_id = result[0]
-                    logger.info("Successfully saved/updated page: %s", page["url"])
-                conn.commit()
-
-            if page_id and self.elasticsearch_client:
-                self.index_page_in_elasticsearch(page, page_id)
-
-        except Error as error:
-            # Check if it's a fingerprint duplicate error
-            if "fingerprint" in str(error) and "duplicate" in str(error).lower():
-                logger.info(
-                    "Page with identical fingerprint already exists; skipping URL: %s",
-                    page["url"],
-                )
-            else:
-                logger.error("Error saving page %s: %s", page["url"], error)
-
-    def chunk_text(self, text: str, target_size: int = 800, max_size: int = 1200) -> list[str]:
-        """
-        Split text into chunks at sentence boundaries.
-        
-        - target_size: Ideal chunk size in characters
-        - max_size: Maximum chunk size before forcing a split
-        """
-        if not text or len(text) <= target_size:
-            return [text] if text else []
-
-        # Split into sentences (handles ., !, ?, and paragraph breaks)
-        sentence_pattern = re.compile(r'(?<=[.!?])\s+|\n\n+')
-        sentences = sentence_pattern.split(text)
-        sentences = [s.strip() for s in sentences if s.strip()]
-
-        chunks = []
-        current_chunk = []
-        current_length = 0
-
-        for sentence in sentences:
-            sentence_len = len(sentence)
-
-            # If single sentence exceeds max, split by words
-            if sentence_len > max_size:
-                # Flush current chunk first
-                if current_chunk:
-                    chunks.append(" ".join(current_chunk))
-                    current_chunk = []
-                    current_length = 0
-
-                # Split long sentence by words
-                words = sentence.split()
-                word_chunk = []
-                word_length = 0
-                for word in words:
-                    if word_length + len(word) + 1 > max_size:
-                        if word_chunk:
-                            chunks.append(" ".join(word_chunk))
-                        word_chunk = [word]
-                        word_length = len(word)
-                    else:
-                        word_chunk.append(word)
-                        word_length += len(word) + 1
-                if word_chunk:
-                    current_chunk = word_chunk
-                    current_length = word_length
-                continue
-
-            # Would this sentence push us over target?
-            if current_length + sentence_len + 1 > target_size and current_chunk:
-                chunks.append(" ".join(current_chunk))
-                current_chunk = []
-                current_length = 0
-
-            current_chunk.append(sentence)
-            current_length += sentence_len + 1
-
-        # Don't forget the last chunk
-        if current_chunk:
-            chunks.append(" ".join(current_chunk))
-
-        return chunks
-
-    def index_page_in_elasticsearch(self, page: dict, page_id: int):
-        """Index one document per page (matches bulk import from PostgreSQL)."""
-        if not self.elasticsearch_client:
-            return
-
-        try:
-            text = page["text"] or ""
-            if not text.strip():
-                return
-
-            doc = {
-                "title": page["title"] or "",
-                "url": page["url"] or "",
-                "text": text,
-                "date": page.get("date"),
-                "scraped_on_date": datetime.now(timezone.utc).isoformat(),
-                "original_url": page.get("original_url"),
-            }
-            self.elasticsearch_client.index(
-                index=self._es_index,
-                id=str(page_id),
-                document=doc,
-            )
-            logger.info(
-                "Indexed page in Elasticsearch: %s (id=%s)",
-                page["url"],
-                page_id,
-            )
-
-        except Exception as e:
-            logger.warning("Failed to index page in Elasticsearch %s: %s", page["url"], e)
-
-    def get_domain(self, url: str) -> str:
-        """Extract domain from URL"""
-        try:
-            base = get_base_url(url)
-            return re.sub(r"^https?://(www\.)?", "", base or "").split("/")[0]
-        except:
-            return ""
-
-
-    def reindex_all(self):
-        """Re-index all pages from the database into Elasticsearch."""
-        if not self.elasticsearch_client:
-            logger.error("Elasticsearch not configured")
-            return
-
-        logger.info("Starting full re-indexing...")
-
-        try:
-            self.elasticsearch_client.delete_by_query(
-                index=self._es_index,
-                body={"query": {"match_all": {}}},
-                refresh=True,
-                conflicts="proceed",
-            )
-            logger.info("Cleared existing documents in index %s", self._es_index)
-        except Exception as e:
-            logger.warning("Failed to clear index (continuing anyway): %s", e)
-
-        try:
-            with self.db_connection() as conn:
-                cursor = conn.cursor(name="reindex_cursor")
-                cursor.itersize = 100
-                cursor.execute("SELECT count(*) FROM pages")
-                total = cursor.fetchone()[0]
-                logger.info("Found %d pages to re-index", total)
-
-                cursor.execute("SELECT id, title, url, date, text, fingerprint FROM pages")
-
+            fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            raise RuntimeError("A crawler or index worker is already running") from None
+        yield
+
+
+def elasticsearch_client():
+    options = {"request_timeout": 20, "max_retries": 0}
+    if os.getenv("ELASTICSEARCH_API_KEY"):
+        options["api_key"] = os.environ["ELASTICSEARCH_API_KEY"]
+    return Elasticsearch(os.getenv("ELASTICSEARCH_URL", "http://localhost:9200"), **options)
+
+
+def ensure_index(client, index):
+    if not client.indices.exists(index=index):
+        client.indices.create(index=index, mappings={"properties": {
+            "url": {"type": "keyword"}, "title": {"type": "text"},
+            "text": {"type": "text"}, "date": {"type": "date"},
+            "scraped_on_date": {"type": "date"},
+        }})
+
+
+def sync_sources(store, fetcher, source_file=None):
+    if source_file:
+        contents = Path(source_file).read_text(encoding="utf-8")
+    else:
+        contents = fetcher.fetch(SMALLWEB_URL).body.decode("utf-8-sig")
+    tasks = source_jobs(contents)
+    if not tasks:
+        raise ValueError("Source list contains no valid feed URLs; existing jobs were preserved")
+    count = store.enqueue(tasks)
+    logger.info("Read %s feeds; added %s new jobs", len(tasks), count)
+
+
+def run(store, args, *, index_only=False):
+    stop = threading.Event()
+    previous = {sig: signal.signal(sig, lambda *_: stop.set()) for sig in (signal.SIGINT, signal.SIGTERM)}
+    client, fetcher = elasticsearch_client(), Fetcher(delay=args.delay)
+    worker = Worker(store, fetcher, workers=args.workers, backfill_depth=args.backfill_depth)
+    deadline = time.monotonic() + args.minutes * 60 if args.minutes else float("inf")
+    processed = 0
+    index = os.getenv("ELASTICSEARCH_INDEX", "pages")
+    try:
+        with process_lock():
+            while not stop.is_set() and time.monotonic() < deadline:
                 count = 0
-                while True:
-                    rows = cursor.fetchmany(100)
-                    if not rows:
+                if not index_only:
+                    remaining = args.max_jobs - processed if args.max_jobs else args.workers
+                    if remaining <= 0:
                         break
+                    count = worker.run_batch(remaining)
+                    processed += count
+                # An index outage must not stop saving newly fetched pages.
+                try:
+                    indexed = flush_index(store, client, index)
+                except Exception as error:
+                    logger.warning("Index unavailable (%s); pending writes retained", type(error).__name__)
+                    indexed = 0
+                if not count and not indexed:
+                    if not args.watch:
+                        break
+                    stop.wait(30)
+    finally:
+        client.close()
+        fetcher.close()
+        for sig, handler in previous.items():
+            signal.signal(sig, handler)
+    logger.info("Processed %s crawl jobs", processed)
 
-                    for row in rows:
-                        page = {
-                            "title": row[1],
-                            "url": row[2],
-                            "date": row[3],
-                            "text": row[4],
-                            "fingerprint": row[5],
-                        }
-                        self.index_page_in_elasticsearch(page, row[0])
-                        count += 1
 
-                    logger.info("Indexed %d/%d pages", count, total)
+def parser():
+    result = argparse.ArgumentParser(description="Daily feed checks with durable jobs and archive backfills")
+    commands = result.add_subparsers(dest="command", required=True)
+    commands.add_parser("migrate", help="Create missing database tables; preserves existing pages")
+    commands.add_parser("init-index", help="Create the search index if missing")
+    sync = commands.add_parser("sync", help="Import the current Small Web feed list")
+    sync.add_argument("--source-file", help="Read a local feed list instead (useful for a small pilot)")
+    backfill = commands.add_parser("backfill", help="Schedule an archive and sitemap crawl for one blog")
+    backfill.add_argument("url", help="Blog homepage URL")
+    backfill.add_argument("--budget", type=int, default=10_000, help="Maximum historical jobs for this blog; increase to continue a capped backfill")
+    commands.add_parser("status", help="Show queue progress and indexing backlog")
+    commands.add_parser("retry-failed", help="Retry failed jobs; never erase pending work")
+    commands.add_parser("retry-skipped", help="Reevaluate pages previously skipped by extraction")
+    commands.add_parser("reindex", help="Queue all saved pages for indexing; never clear the live index")
+    for name, help_text in (("run", "Process pending jobs"), ("index", "Process pending search-index writes")):
+        command = commands.add_parser(name, help=help_text)
+        command.add_argument("--watch", action="store_true", help="Wait for newly due work until stopped")
+        command.add_argument("--workers", type=int, default=8)
+        command.add_argument("--delay", type=float, default=2.0, help="Minimum seconds between requests to a host")
+        command.add_argument("--backfill-depth", type=int, default=5)
+        command.add_argument("--max-jobs", type=int, default=0, help="Stop after this many crawl jobs (0 = unlimited)")
+        command.add_argument("--minutes", type=float, default=0, help="Stop taking new work after this many minutes")
+    return result
 
-        except Exception as e:
-            logger.error("Error during re-indexing: %s", e)
 
-    def tmp(self):
-        pass
-
-    @contextmanager
-    def db_connection(self):
-        """Context manager for database connections."""
-        conn = None
-        try:
-            conn = self.get_connection()
-            yield conn
-        except Exception as e:
-            if conn:
-                conn.rollback()
-            raise e
-        finally:
-            if conn:
-                self.release_connection(conn)
+def main(argv=None):
+    load_dotenv(PROJECT / ".env")
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+    logging.getLogger("elastic_transport").setLevel(logging.ERROR)
+    args = parser().parse_args(argv)
+    if args.command == "backfill" and args.budget < 1:
+        parser().error("Backfill budget must be positive")
+    if hasattr(args, "workers") and (not 1 <= args.workers <= 32 or not math.isfinite(args.delay) or args.delay < 0 or args.max_jobs < 0 or not math.isfinite(args.minutes) or args.minutes < 0 or not 1 <= args.backfill_depth <= 12):
+        parser().error("Use 1–32 workers, depth 1–12, and nonnegative delay, job, and time limits")
+    try:
+        with Store() as store:
+            if args.command == "migrate":
+                store.migrate()
+            elif args.command == "init-index":
+                with elasticsearch_client() as client:
+                    ensure_index(client, os.getenv("ELASTICSEARCH_INDEX", "pages"))
+            elif args.command == "sync":
+                fetcher = Fetcher()
+                try:
+                    sync_sources(store, fetcher, args.source_file)
+                finally:
+                    fetcher.close()
+            elif args.command == "backfill":
+                url = normalize_url(args.url)
+                if not url:
+                    raise ValueError("Provide a valid HTTP(S) blog URL")
+                store.set_backfill_budget(url, args.budget)
+                store.enqueue([job("archive", url, priority=20, root=url),
+                               job("sitemap", urljoin(url, "/sitemap.xml"), priority=30, root=url)])
+            elif args.command == "status":
+                print(json.dumps(store.status(), indent=2, default=str))
+            elif args.command == "retry-failed":
+                store.retry_failed()
+            elif args.command == "retry-skipped":
+                store.retry_skipped()
+            elif args.command == "reindex":
+                store.queue_reindex()
+            else:
+                run(store, args, index_only=args.command == "index")
+    except Exception as error:
+        logger.error("Command failed (%s). Check configuration and crawler status.", type(error).__name__)
+        return 1
+    return 0
 
 
 if __name__ == "__main__":
-    scraper = Scraper()
-
-    if len(sys.argv) > 1:
-        command = sys.argv[1]
-        if command == "enqueue":
-            logger.info("ENQUEUE")
-            scraper.enqueue_new_feed_entries()
-        elif command == "scrape":
-            logger.info("SCRAPE")
-            scraper.scrape()
-        elif command == "all":
-            logger.info("ALL (ENQUEUE + PROCESS)")
-            scraper.enqueue_new_feed_entries()
-            logger.info("Enqueue complete, starting processing...")
-            scraper.scrape()
-        elif command == "reindex":
-            logger.info("Reindex all pages from the database to Elasticsearch")
-            scraper.reindex_all()
-        elif command == "tmp":
-            scraper.tmp()
-        else:
-            logger.error("Unknown command: %s", command)
-            logger.info("Available commands: enqueue, process, run, reindex, tmp")
-    else:
-        logger.info("Available commands: enqueue, process, run, reindex, tmp")
+    raise SystemExit(main())

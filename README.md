@@ -1,11 +1,45 @@
-# blog-search
-Blog Search is a search engine focused on indexing personal blog content. It can be used to find authentic, personal content from real people sharing their ideas and experiences.
+# Blog Search
 
-The web app is written in Python using FastAPI. It uses PostgreSQL as the database. I'm testing search results from both PostgreSQL's full text search, Meilisearch, and Elastisearch. 
+[Blog Search](https://blogsearch.io) indexes personal blogs and independent websites.
+Blog sources come from [Kagi Small Web](https://github.com/kagisearch/smallweb).
 
-The scraper is multi-threaded and uses an AWS SQS message queue. Both the web app and scraper are deployed on a Linux server with Docker Compose.
+- **Web:** FastAPI and Jinja, with Elasticsearch for search and PostgreSQL for content.
+- **Crawler:** daily feed checks plus resumable sitemap/archive discovery. PostgreSQL
+  stores jobs, retry state, HTTP validators, and pending search-index writes.
+- **Extraction:** Trafilatura runs locally. No paid extraction API is required.
+- **Hosting:** systemd runs the app and scheduled crawler on the existing server;
+  Elasticsearch and Plausible run in Docker; the app's database is on Neon.
 
-The current list of blogs to index is compiled from Kagi's [smallweb project](https://github.com/kagisearch/smallweb). This is a personal project I started mainly to get better at SQL, web scraping, and message queues. 
+## Development
 
+```sh
+uv sync --frozen
+uv run python -m scraper.scraper migrate
+uv run python web/server.py
+```
 
-https://blogsearch.io
+Configure PostgreSQL with `PGHOST`, `PGDATABASE`, `PGUSER`, `PGPASSWORD`, and
+optional `PGPORT`, `PGSSLMODE`, `PGCHANNELBINDING` in a local `.env`.
+Set `ELASTICSEARCH_URL` for search (defaults to `http://localhost:9200`).
+Database schema installation is explicit; importing or starting the web app never
+creates tables.
+
+## Crawling
+
+```sh
+uv run python -m scraper.scraper sync
+uv run python -m scraper.scraper run --max-jobs 20 --workers 2
+uv run python -m scraper.scraper status
+```
+
+See [server setup and recovery](ops/README.md) for the production pilot,
+daily schedules, backfills, configuration, and safe reindexing.
+
+## Tests
+
+```sh
+uv run python -B -m unittest discover -s tests
+```
+
+Set `TEST_DATABASE_URL` to a disposable PostgreSQL database to include transaction
+and recovery tests. These tests never use the application's database configuration.

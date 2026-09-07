@@ -1,5 +1,10 @@
+import logging
+import os
 import time
-from fastapi import FastAPI, Request, Form, Query, HTTPException, BackgroundTasks
+from contextlib import asynccontextmanager
+
+from fastapi import FastAPI, Request, Query, HTTPException, BackgroundTasks
+from fastapi.concurrency import run_in_threadpool
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from fastapi.responses import (
@@ -8,77 +13,112 @@ from fastapi.responses import (
     PlainTextResponse,
     JSONResponse,
 )
-from search_engine import SearchEngine
-import os
+from psycopg2 import Error as DatabaseError
 
-app = FastAPI()
+if __package__:
+    from .search_engine import BackendUnavailable, SearchEngine
+else:
+    from search_engine import BackendUnavailable, SearchEngine
+
+
+logger = logging.getLogger(__name__)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    engine = await run_in_threadpool(SearchEngine)
+    app.state.search_engine = engine
+    try:
+        yield
+    finally:
+        try:
+            await run_in_threadpool(engine.close)
+        finally:
+            app.state.search_engine = None
+
+
+app = FastAPI(lifespan=lifespan)
 templates_path = os.path.join(os.path.dirname(__file__), "templates")
 templates = Jinja2Templates(directory=templates_path)
 static_path = os.path.join(os.path.dirname(__file__), "static")
 app.mount("/static", StaticFiles(directory=static_path), name="static")
-search_engine = SearchEngine()
+
+
+@app.exception_handler(BackendUnavailable)
+@app.exception_handler(DatabaseError)
+async def backend_unavailable(request: Request, error: Exception):
+    logger.error("Search backend unavailable", exc_info=error)
+    return JSONResponse(
+        status_code=503,
+        content={"detail": "Search service temporarily unavailable"},
+    )
 
 
 @app.get("/", response_class=HTMLResponse)
-async def home(request: Request):
+def home(request: Request):
+    search_engine = request.app.state.search_engine
     return templates.TemplateResponse(
-        "index.html", {"request": request, "posts_size": search_engine.size}
+        request=request,
+        name="index.html",
+        context={"posts_size": search_engine.size},
     )
 
 
 @app.get("/about", response_class=HTMLResponse)
-async def api(request: Request):
+def api(request: Request):
+    search_engine = request.app.state.search_engine
     return templates.TemplateResponse(
-        "about.html",
-        {
-            "request": request,
-            "posts_size": search_engine.size,
-        },
+        request=request,
+        name="about.html",
+        context={"posts_size": search_engine.size},
     )
 
 
 @app.get("/api", response_class=HTMLResponse)
-async def about(request: Request):
+def about(request: Request):
+    search_engine = request.app.state.search_engine
     return templates.TemplateResponse(
-        "api.html",
-        {
-            "request": request,
-            "posts_size": search_engine.size,
-        },
+        request=request,
+        name="api.html",
+        context={"posts_size": search_engine.size},
     )
 
 
 @app.get("/bot", response_class=HTMLResponse)
-async def bot(request: Request):
+def bot(request: Request):
+    search_engine = request.app.state.search_engine
     return templates.TemplateResponse(
-        "bot.html",
-        {
-            "request": request,
-            "posts_size": search_engine.size,
-        },
+        request=request,
+        name="bot.html",
+        context={"posts_size": search_engine.size},
     )
 
 
 @app.get("/search", response_class=HTMLResponse)
-async def search_page(
+def search_page(
     request: Request,
     background_tasks: BackgroundTasks,
     q: str = Query(None),
     page: int = Query(1, ge=1),
 ):
+    search_engine = request.app.state.search_engine
     query = q.strip() if q else ""
     results = []
     search_time = 0
 
     if not query:
         return templates.TemplateResponse(
-            "index.html", {"request": request, "posts_size": search_engine.size}
+            request=request,
+            name="index.html",
+            context={"posts_size": search_engine.size},
         )
 
     background_tasks.add_task(
         search_engine.log_query,
         query=query,
-        ip_address=request.headers.get("X-Forwarded-For", request.client.host),
+        ip_address=request.headers.get(
+            "X-Forwarded-For", request.client.host if request.client else ""
+        ),
         user_agent=request.headers.get("user-agent", ""),
     )
 
@@ -104,9 +144,9 @@ async def search_page(
         results = response.get("results", [])
 
     return templates.TemplateResponse(
-        "search.html",
-        {
-            "request": request,
+        request=request,
+        name="search.html",
+        context={
             "results": results,
             "query": query,
             "time": search_time,
@@ -119,14 +159,15 @@ async def search_page(
 
 
 @app.get("/latest", response_class=HTMLResponse)
-async def latest(request: Request, page: int = Query(1, ge=1)):
+def latest(request: Request, page: int = Query(1, ge=1)):
+    search_engine = request.app.state.search_engine
     start_time = time.time()
     response = search_engine.get_latest_posts(page=page)
     search_time = round(time.time() - start_time, 2)
     return templates.TemplateResponse(
-        "search.html",
-        {
-            "request": request,
+        request=request,
+        name="search.html",
+        context={
             "results": response["results"],
             "query": "",
             "time": search_time,
@@ -139,14 +180,15 @@ async def latest(request: Request, page: int = Query(1, ge=1)):
 
 
 @app.get("/random", response_class=HTMLResponse)
-async def random(request: Request):
+def random(request: Request):
+    search_engine = request.app.state.search_engine
     start_time = time.time()
     result = search_engine.get_random_post()
     search_time = round(time.time() - start_time, 2)
     return templates.TemplateResponse(
-        "search.html",
-        {
-            "request": request,
+        request=request,
+        name="search.html",
+        context={
             "results": [result] if result else [],
             "query": "",
             "time": search_time,
@@ -159,7 +201,8 @@ async def random(request: Request):
 
 
 @app.get("/api/search", response_class=JSONResponse)
-async def api_search(q: str = Query(...), page: int = Query(1, ge=1)):
+def api_search(request: Request, q: str = Query(...), page: int = Query(1, ge=1)):
+    search_engine = request.app.state.search_engine
     query = q.strip() if q else None
     if not query:
         return JSONResponse({"results": [], "total": 0, "page": 1, "total_pages": 0})
@@ -172,9 +215,11 @@ async def api_search(q: str = Query(...), page: int = Query(1, ge=1)):
             "page": response.get("page", 1),
             "total_pages": response.get("total_pages", 0),
         })
-    except Exception as e:
-        print(f"An error occurred: {str(e)}")
-        raise HTTPException(status_code=500, detail="Internal server error: " + str(e))
+    except (BackendUnavailable, DatabaseError):
+        raise
+    except Exception:
+        logger.exception("Search API request failed")
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @app.get("/robots.txt", response_class=PlainTextResponse)

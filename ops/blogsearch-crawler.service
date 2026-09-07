@@ -1,0 +1,19 @@
+[Unit]
+Description=Process Blog Search crawl and indexing jobs
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=debian
+WorkingDirectory=/home/debian/blog-search
+EnvironmentFile=/home/debian/blog-search/.env
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/home/debian/blog-search/.venv/bin/python -m scraper.scraper run --minutes 12 --workers 8
+TimeoutStartSec=20min
+TimeoutStopSec=180
+KillSignal=SIGTERM
+Nice=10
+NoNewPrivileges=true
+PrivateTmp=true
+

@@ -1,0 +1,16 @@
+[Unit]
+Description=Refresh the Blog Search source list
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=debian
+WorkingDirectory=/home/debian/blog-search
+EnvironmentFile=/home/debian/blog-search/.env
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/home/debian/blog-search/.venv/bin/python -m scraper.scraper sync
+TimeoutStartSec=5min
+NoNewPrivileges=true
+PrivateTmp=true
+

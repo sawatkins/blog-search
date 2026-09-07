@@ -1,0 +1,10 @@
+[Unit]
+Description=Resume due Blog Search jobs every 15 minutes
+
+[Timer]
+OnBootSec=5min
+OnUnitInactiveSec=15min
+Unit=blogsearch-crawler.service
+
+[Install]
+WantedBy=timers.target
